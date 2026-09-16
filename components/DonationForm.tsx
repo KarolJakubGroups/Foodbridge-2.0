@@ -2,12 +2,12 @@
 
 import { useState, useTransition, type FormEvent } from 'react';
 import { createDonation } from '@/lib/actions';
-import type { DonationInput, TemperatureRange } from '@/lib/types';
-import { TEMPERATURES } from '@/lib/format';
+import type { Category, DonationInput, TemperatureRange } from '@/lib/types';
+import { CATEGORIES_OPTIONS, TEMPERATURES } from '@/lib/format';
 import { Alert, Field, btnPrimary, inputCls } from '@/components/ui';
 
 const EMPTY = {
-  productName: '', temperatureRange: 'AMBIENT' as TemperatureRange, bestBeforeDate: '', pickupAddress: '',
+  productName: '', category: '' as Category | '', temperatureRange: 'AMBIENT' as TemperatureRange, bestBeforeDate: '', pickupAddress: '',
   numberOfPallets: '', weightPerPallet: '', overlapStart: '', overlapEnd: '',
 };
 
@@ -23,6 +23,10 @@ export function DonationForm({ defaultAddress }: { defaultAddress: string }) {
   const submit = (e: FormEvent) => {
     e.preventDefault();
     setError(null); setSuccess(null);
+    if (!form.category) {
+      setError('Bitte eine Warengruppe wählen.');
+      return;
+    }
     if (form.overlapEnd <= form.overlapStart) {
       setError('Das Abholzeitfenster-Ende muss nach dem Beginn liegen.');
       return;
@@ -30,6 +34,7 @@ export function DonationForm({ defaultAddress }: { defaultAddress: string }) {
     // datetime-local values are in the browser's timezone; convert to instants here.
     const input: DonationInput = {
       productName: form.productName,
+      category: form.category,
       temperatureRange: form.temperatureRange,
       bestBeforeDate: form.bestBeforeDate,
       pickupAddress: form.pickupAddress,
@@ -56,6 +61,12 @@ export function DonationForm({ defaultAddress }: { defaultAddress: string }) {
       <form onSubmit={submit} className="grid grid-cols-2 gap-3">
         <Field label="Produkt *">
           <input className={inputCls} value={form.productName} onChange={set('productName')} required maxLength={120} />
+        </Field>
+        <Field label="Warengruppe *">
+          <select className={inputCls} value={form.category} onChange={set('category')} required>
+            <option value="" disabled>Bitte wählen…</option>
+            {CATEGORIES_OPTIONS.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+          </select>
         </Field>
         <Field label="Temperatur *">
           <select className={inputCls} value={form.temperatureRange} onChange={set('temperatureRange')} required>

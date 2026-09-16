@@ -1,6 +1,7 @@
 import { requireRole } from '@/lib/auth';
 import { fetchAvailableDonations, fetchImpactFor, fetchMyClaims } from '@/lib/queries';
 import { weightKg } from '@/lib/domain';
+import { categoryLabel } from '@/lib/format';
 import { Badge, Card, ImpactChip, TableShell, tdCls, trCls } from '@/components/ui';
 import { AvailableDonations } from '@/components/AvailableDonations';
 
@@ -24,11 +25,12 @@ export default async function FoodbankPage() {
           <AvailableDonations donations={available} />
         </Card>
         <Card className="lg:col-span-2" title="Ihre reservierten Allokationen" subtitle="Geplant für Galliker-Logistikkonsolidierung.">
-          <TableShell isEmpty={claims.length === 0} headers={[{ label: 'Spender' }, { label: 'Artikel' }, { label: 'Menge' }, { label: 'Status' }]}>
+          <TableShell isEmpty={claims.length === 0} headers={[{ label: 'Spender' }, { label: 'Artikel' }, { label: 'Warengruppe' }, { label: 'Menge' }, { label: 'Status' }]}>
             {claims.map((c) => (
               <tr key={c.id} className={trCls}>
                 <td className={tdCls}><b>{c.donation.donor.username}</b></td>
                 <td className={tdCls}>{c.donation.productName}</td>
+                <td className={tdCls}>{categoryLabel(c.donation.category)}</td>
                 <td className={`${tdCls} font-mono`}>{weightKg(c.donation)} kg ({c.donation.numberOfPallets} Pal)</td>
                 <td className={tdCls}><Badge status={c.donation.status} /></td>
               </tr>

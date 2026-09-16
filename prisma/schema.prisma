@@ -44,6 +44,7 @@ model Donation {
   donorId          String
   donor            User     @relation("DonorDonations", fields: [donorId], references: [id])
   productName      String
+  category         String   @default("OTHER") // see CATEGORIES in lib/domain.ts
   temperatureRange String   // FROZEN | CHILLED | AMBIENT
   bestBeforeDate   String   // YYYY-MM-DD (date only, no timezone)
   pickupAddress    String

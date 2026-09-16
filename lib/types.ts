@@ -1,7 +1,7 @@
 import type { Claim, Donation, TransportOrder, User, Wishlist } from '@/lib/generated/prisma/client';
-import type { Role, TemperatureRange } from '@/lib/domain';
+import type { Category, Role, TemperatureRange } from '@/lib/domain';
 
-export type { Role, TemperatureRange, DonationStatus, TransportStatus } from '@/lib/domain';
+export type { Category, Role, TemperatureRange, DonationStatus, TransportStatus } from '@/lib/domain';
 export type { Claim, Donation, TransportOrder, Wishlist };
 
 export type UserSummary = Pick<User, 'id' | 'username' | 'organizationName' | 'address'>;
@@ -12,9 +12,10 @@ export type ClaimWithDonation = Claim & { donation: DonationWithDonor };
 export type TransportOrderWithDetails = TransportOrder & { donor: UserSummary; donations: Donation[] };
 export type WishlistWithFoodbank = Wishlist & { foodbank: UserSummary };
 
-/** Payload of the donor form: the 7 mandatory fields. */
+/** Payload of the donor form: the 7 mandatory fields of the spec plus the product category. */
 export interface DonationInput {
   productName: string;
+  category: Category;
   temperatureRange: TemperatureRange;
   bestBeforeDate: string; // YYYY-MM-DD
   pickupAddress: string;

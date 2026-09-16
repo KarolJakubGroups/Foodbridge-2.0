@@ -47,7 +47,7 @@ Wirkungsbilanz unter „Logistik-Netzwerk“.
 
 | Regel | Umsetzung |
 |-------|-----------|
-| 7 Pflichtfelder pro Spende | `lib/services.ts` (`createDonation`), Formular `components/DonationForm.tsx` |
+| 7 Pflichtfelder pro Spende + Warengruppe | `lib/services.ts` (`createDonation`), Formular `components/DonationForm.tsx`; Kategorien in `lib/domain.ts` |
 | 4-Tage-Frist | Lesen: `fetchAvailableDonations` in `lib/queries.ts`; Schreiben: bedingtes `updateMany` in `claimDonation` |
 | Nur eine Institution pro Spende | Atomares `updateMany … WHERE status = 'AVAILABLE'` in einer Transaktion, `UNIQUE` auf `Claim.donationId` |
 | Galliker-Bündelung | Algorithmus in `lib/logistics.ts` (Sortierung nach Fensterende, `start <= bundleEnd`), Persistenz in `runBundling` |

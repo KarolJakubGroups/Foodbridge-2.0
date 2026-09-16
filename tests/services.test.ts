@@ -27,7 +27,7 @@ const bestBefore = new Date(Date.now() + 10 * 86_400_000).toISOString().slice(0,
 
 async function insertDonation(donor: Profile, overrides: Partial<Prisma.DonationUncheckedCreateInput> = {}) {
   const data: Prisma.DonationUncheckedCreateInput = {
-      donorId: donor.id, productName: 'Testware', temperatureRange: 'AMBIENT', bestBeforeDate: bestBefore,
+      donorId: donor.id, productName: 'Testware', category: 'DRY_GOODS', temperatureRange: 'AMBIENT', bestBeforeDate: bestBefore,
       pickupAddress: 'Zürich', numberOfPallets: 1, weightPerPallet: 10, overlapStart: inDays(20, 8), overlapEnd: inDays(20, 12),
       ...overrides,
   };
@@ -46,7 +46,7 @@ beforeAll(async () => {
 
 describe('donation capture (FA-01)', () => {
   const valid = {
-    productName: 'Rüebli', temperatureRange: 'CHILLED' as const, bestBeforeDate: bestBefore, pickupAddress: 'Limmatstrasse 152',
+    productName: 'Rüebli', category: 'FRUIT_VEG' as const, temperatureRange: 'CHILLED' as const, bestBeforeDate: bestBefore, pickupAddress: 'Limmatstrasse 152',
     numberOfPallets: 2, weightPerPallet: 250.5, overlapStart: inDays(5, 8).toISOString(), overlapEnd: inDays(5, 12).toISOString(),
   };
 
@@ -60,6 +60,10 @@ describe('donation capture (FA-01)', () => {
     await expect(services.createDonation(migros, { ...valid, weightPerPallet: 0, pickupAddress: '' }))
       .rejects.toThrow(/Gewicht pro Palette/);
     await expect(services.createDonation(migros, { ...valid, overlapEnd: valid.overlapStart })).rejects.toThrow(/Ende/);
+  });
+
+  it('rejects an unknown category', async () => {
+    await expect(services.createDonation(migros, { ...valid, category: 'CANDY' as never })).rejects.toThrow(/Warengruppe/);
   });
 
   it('rejects non-donors', async () => {

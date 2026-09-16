@@ -39,24 +39,24 @@ async function main() {
   }
 
   const { migros, coop, foodbank_zrh: foodbank } = users;
-  const base = (donor: { id: string; address: string }, productName: string, temperatureRange: string, bestBeforeInDays: number,
+  const base = (donor: { id: string; address: string }, productName: string, category: string, temperatureRange: string, bestBeforeInDays: number,
     numberOfPallets: number, weightPerPallet: number, start: Date, end: Date, createdAt: Date, status: string) => ({
-    donorId: donor.id, productName, temperatureRange, bestBeforeDate: dateIn(bestBeforeInDays), pickupAddress: donor.address,
+    donorId: donor.id, productName, category, temperatureRange, bestBeforeDate: dateIn(bestBeforeInDays), pickupAddress: donor.address,
     numberOfPallets, weightPerPallet, overlapStart: start, overlapEnd: end, createdAt, status,
   });
 
   const rows = [
     // Migros: Äpfel + Birnen overlap (-> one Galliker order), Orangen disjoint (-> second order)
-    base(migros, 'Äpfel Gala', 'AMBIENT', 12, 1, 50, days(1), days(3), hoursAgo(1), 'CLAIMED'),
-    base(migros, 'Birnen', 'AMBIENT', 10, 1, 30, days(2), days(4), hoursAgo(1), 'CLAIMED'),
-    base(migros, 'Orangen', 'AMBIENT', 14, 1, 40, days(4), days(5), hoursAgo(1), 'CLAIMED'),
-    base(migros, 'Brot vom Vortag', 'AMBIENT', 2, 1, 20, days(1), days(2), hoursAgo(3), 'AVAILABLE'),
+    base(migros, 'Äpfel Gala', 'FRUIT_VEG', 'AMBIENT', 12, 1, 50, days(1), days(3), hoursAgo(1), 'CLAIMED'),
+    base(migros, 'Birnen', 'FRUIT_VEG', 'AMBIENT', 10, 1, 30, days(2), days(4), hoursAgo(1), 'CLAIMED'),
+    base(migros, 'Orangen', 'FRUIT_VEG', 'AMBIENT', 14, 1, 40, days(4), days(5), hoursAgo(1), 'CLAIMED'),
+    base(migros, 'Brot vom Vortag', 'BAKERY', 'AMBIENT', 2, 1, 20, days(1), days(2), hoursAgo(3), 'AVAILABLE'),
     // Coop
-    base(coop, 'Bananen', 'CHILLED', 6, 1, 30, days(1), days(4), hoursAgo(24), 'CLAIMED'),
-    base(coop, 'Milch UHT 1l', 'CHILLED', 20, 2, 50, days(1), days(5), hoursAgo(6), 'AVAILABLE'),
-    base(coop, 'Tiefkühl-Gemüse', 'FROZEN', 90, 1, 250, days(2), days(3), hoursAgo(1), 'AVAILABLE'),
+    base(coop, 'Bananen', 'FRUIT_VEG', 'CHILLED', 6, 1, 30, days(1), days(4), hoursAgo(24), 'CLAIMED'),
+    base(coop, 'Milch UHT 1l', 'DAIRY_EGGS', 'CHILLED', 20, 2, 50, days(1), days(5), hoursAgo(6), 'AVAILABLE'),
+    base(coop, 'Tiefkühl-Gemüse', 'FRUIT_VEG', 'FROZEN', 90, 1, 250, days(2), days(3), hoursAgo(1), 'AVAILABLE'),
     // Older than 4 days -> hidden from foodbanks by the freshness rule (TF-03)
-    base(coop, 'Joghurt Nature', 'CHILLED', 5, 1, 60, days(1), days(2), hoursAgo(5 * 24), 'AVAILABLE'),
+    base(coop, 'Joghurt Nature', 'DAIRY_EGGS', 'CHILLED', 5, 1, 60, days(1), days(2), hoursAgo(5 * 24), 'AVAILABLE'),
   ];
   let claims = 0;
   for (const row of rows) {

@@ -3,7 +3,7 @@
 import { useState, useTransition, type FormEvent } from 'react';
 import { assignDriver, setOrderStatus } from '@/lib/actions';
 import type { TransportOrderWithDetails } from '@/lib/types';
-import { fmtDateTime, fmtKg, tempLabel } from '@/lib/format';
+import { categoryLabel, fmtDateTime, fmtKg, tempLabel } from '@/lib/format';
 import { weightKg } from '@/lib/domain';
 import { Alert, Badge, TableShell, btnDark, btnGhost, btnPrimary, inputCls, tdCls, trCls } from '@/components/ui';
 
@@ -73,10 +73,11 @@ export function OrderCard({ order, readOnly = false }: { order: TransportOrderWi
       </div>
       {error && <div className="px-4 pt-3"><Alert onClose={() => setError(null)}>{error}</Alert></div>}
       <TableShell isEmpty={order.donations.length === 0}
-        headers={[{ label: 'Artikel' }, { label: 'Temp.' }, { label: 'Menge' }, { label: 'Individuelles Zeitfenster (Start – Ende)' }, { label: 'Positionsstatus' }]}>
+        headers={[{ label: 'Artikel' }, { label: 'Warengruppe' }, { label: 'Temp.' }, { label: 'Menge' }, { label: 'Individuelles Zeitfenster (Start – Ende)' }, { label: 'Positionsstatus' }]}>
         {order.donations.map((d) => (
           <tr key={d.id} className={trCls}>
             <td className={tdCls}><b>{d.productName}</b></td>
+            <td className={tdCls}>{categoryLabel(d.category)}</td>
             <td className={`${tdCls} text-slate-600`}>{tempLabel(d.temperatureRange)}</td>
             <td className={`${tdCls} font-mono`}>{weightKg(d)} kg ({d.numberOfPallets} Pal)</td>
             <td className={`${tdCls} font-mono`}>{fmtDateTime(d.overlapStart)} – {fmtDateTime(d.overlapEnd)}</td>

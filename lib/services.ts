@@ -2,7 +2,7 @@ import 'server-only';
 import { prisma } from '@/lib/db';
 import { planTransportOrders } from '@/lib/logistics';
 import {
-  DomainError, MAX_PALLETS, MAX_WEIGHT_PER_PALLET, TEMPERATURE_RANGES, freshnessCutoff, zurichNoonOf,
+  CATEGORIES, DomainError, MAX_PALLETS, MAX_WEIGHT_PER_PALLET, TEMPERATURE_RANGES, freshnessCutoff, zurichNoonOf,
   type TransportStatus,
 } from '@/lib/domain';
 import type { DonationInput, Profile, WishlistInput } from '@/lib/types';
@@ -13,6 +13,7 @@ export async function createDonation(donor: Profile, input: DonationInput) {
 
   const missing: string[] = [];
   if (!input.productName?.trim()) missing.push('Produkt');
+  if (!CATEGORIES.includes(input.category)) missing.push('Warengruppe');
   if (!TEMPERATURE_RANGES.includes(input.temperatureRange)) missing.push('Temperatur');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.bestBeforeDate ?? '')) missing.push('MHD');
   if (!input.pickupAddress?.trim()) missing.push('Abholadresse');
@@ -31,6 +32,7 @@ export async function createDonation(donor: Profile, input: DonationInput) {
     data: {
       donorId: donor.id,
       productName: input.productName.trim().slice(0, 120),
+      category: input.category,
       temperatureRange: input.temperatureRange,
       bestBeforeDate: input.bestBeforeDate,
       pickupAddress: input.pickupAddress.trim().slice(0, 200),

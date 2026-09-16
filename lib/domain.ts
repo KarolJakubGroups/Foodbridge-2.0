@@ -1,11 +1,14 @@
 /** Domain constants and rules shared by services, actions and UI. */
 export const ROLES = ['DONOR', 'FOODBANK', 'DISPATCHER'] as const;
 export const TEMPERATURE_RANGES = ['FROZEN', 'CHILLED', 'AMBIENT'] as const;
+/** Product categories (Warengruppen) a donation is classified into. */
+export const CATEGORIES = ['MEAT_FISH', 'DAIRY_EGGS', 'FRUIT_VEG', 'BAKERY', 'DRY_GOODS', 'BEVERAGES', 'READY_MEALS', 'OTHER'] as const;
 export const DONATION_STATUSES = ['AVAILABLE', 'CLAIMED', 'BUNDLED', 'COMPLETED'] as const;
 export const TRANSPORT_STATUSES = ['PENDING', 'DISPATCHED', 'COMPLETED'] as const;
 
 export type Role = (typeof ROLES)[number];
 export type TemperatureRange = (typeof TEMPERATURE_RANGES)[number];
+export type Category = (typeof CATEGORIES)[number];
 export type DonationStatus = (typeof DONATION_STATUSES)[number];
 export type TransportStatus = (typeof TRANSPORT_STATUSES)[number];
 

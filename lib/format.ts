@@ -1,4 +1,4 @@
-import type { Role, TemperatureRange } from './types';
+import type { Category, Role, TemperatureRange } from './domain';
 
 const ZURICH = 'Europe/Zurich';
 
@@ -46,6 +46,22 @@ export const TEMP_LABEL: Record<TemperatureRange, string> = {
   CHILLED: 'Gekühlt (+2° bis +5°)',
   FROZEN: 'Tiefkühl (−18°)',
 };
+
+export const CATEGORY_LABEL: Record<Category, string> = {
+  MEAT_FISH: 'Fleisch & Fisch',
+  DAIRY_EGGS: 'Milchprodukte & Eier',
+  FRUIT_VEG: 'Obst & Gemüse',
+  BAKERY: 'Backwaren',
+  DRY_GOODS: 'Trockenware',
+  BEVERAGES: 'Getränke',
+  READY_MEALS: 'Fertiggerichte',
+  OTHER: 'Sonstiges',
+};
+export const CATEGORIES_OPTIONS = (Object.entries(CATEGORY_LABEL) as [Category, string][]).map(([value, label]) => ({ value, label }));
+
+export function categoryLabel(value: string): string {
+  return CATEGORY_LABEL[value as Category] ?? value;
+}
 
 export const ROLE_LABEL: Record<Role, string> = {
   DONOR: 'Spender',
