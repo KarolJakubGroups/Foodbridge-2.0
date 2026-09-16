@@ -1,11 +1,11 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useState, useTransition, type FormEvent } from 'react';
 import { assignDriver, setOrderStatus } from '@/lib/actions';
 import type { TransportOrderWithDetails } from '@/lib/types';
 import { fmtDateTime, fmtKg, tempLabel } from '@/lib/format';
 import { weightKg } from '@/lib/domain';
-import { Alert, Badge, TableShell, btnDark, btnPrimary, tdCls, trCls } from '@/components/ui';
+import { Alert, Badge, TableShell, btnDark, btnGhost, btnPrimary, inputCls, tdCls, trCls } from '@/components/ui';
 
 export function OrderCard({ order, readOnly = false }: { order: TransportOrderWithDetails; readOnly?: boolean }) {
   const [error, setError] = useState<string | null>(null);
@@ -20,9 +20,14 @@ export function OrderCard({ order, readOnly = false }: { order: TransportOrderWi
       if (!result.ok) setError(result.error ?? 'Aktion fehlgeschlagen.');
     });
   };
-  const onDriver = () => {
-    const name = window.prompt('Name des Galliker-Fahrers:', order.driverName ?? '');
-    if (name && name.trim()) run(() => assignDriver(order.id, name));
+  const [editingDriver, setEditingDriver] = useState(false);
+  const [driverName, setDriverName] = useState(order.driverName ?? '');
+  const submitDriver = (e: FormEvent) => {
+    e.preventDefault();
+    const name = driverName.trim();
+    if (!name) return;
+    setEditingDriver(false);
+    run(() => assignDriver(order.id, name));
   };
 
   return (
@@ -40,10 +45,19 @@ export function OrderCard({ order, readOnly = false }: { order: TransportOrderWi
           {order.driverName && <span className="font-mono text-[11px] text-slate-600">Fahrer: {order.driverName}</span>}
           {!readOnly && order.status === 'PENDING' && (
             <>
-              <button type="button" disabled={pending} onClick={onDriver}
-                className="bg-indigo-700 hover:bg-indigo-800 text-white text-[11px] font-bold px-3 py-1 rounded disabled:opacity-50">
-                Fahrer zuweisen
-              </button>
+              {editingDriver ? (
+                <form onSubmit={submitDriver} className="flex items-center gap-1">
+                  <input autoFocus className={`${inputCls} w-40 py-1 text-[11px]`} placeholder="Name des Fahrers"
+                    value={driverName} onChange={(e) => setDriverName(e.target.value)} maxLength={80} required />
+                  <button type="submit" disabled={pending} className={btnDark}>Speichern</button>
+                  <button type="button" className={btnGhost} onClick={() => setEditingDriver(false)}>Abbrechen</button>
+                </form>
+              ) : (
+                <button type="button" disabled={pending} onClick={() => setEditingDriver(true)}
+                  className="bg-indigo-700 hover:bg-indigo-800 text-white text-[11px] font-bold px-3 py-1 rounded disabled:opacity-50">
+                  {order.driverName ? 'Fahrer ändern' : 'Fahrer zuweisen'}
+                </button>
+              )}
               <button type="button" disabled={pending} className={btnDark} onClick={() => run(() => setOrderStatus(order.id, 'DISPATCHED'))}>
                 Disponieren
               </button>
