@@ -1,0 +1,15 @@
+@import "tailwindcss";
+
+@theme inline {
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+body {
+  @apply bg-slate-100 text-slate-800 font-sans;
+}
+
+@media print {
+  .no-print { display: none !important; }
+  body { background: #fff; }
+}

@@ -1,0 +1,100 @@
+// FoodBridge 2.0 data model. Enum-like columns are strings so the schema runs
+// unchanged on SQLite (local demo) and PostgreSQL (hosted); values are validated
+// in lib/domain.ts.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model User {
+  id               String   @id @default(cuid())
+  username         String   @unique
+  email            String   @unique
+  passwordHash     String
+  role             String   // DONOR | FOODBANK | DISPATCHER
+  organizationName String
+  address          String   @default("")
+  createdAt        DateTime @default(now())
+
+  sessions        Session[]
+  donations       Donation[]       @relation("DonorDonations")
+  claims          Claim[]          @relation("FoodbankClaims")
+  transportOrders TransportOrder[] @relation("DonorOrders")
+  wishlists       Wishlist[]       @relation("FoodbankWishlists")
+}
+
+model Session {
+  id        String   @id
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+/// A donation registered by a retailer, carrying the 7 mandatory fields.
+model Donation {
+  id               Int      @id @default(autoincrement())
+  donorId          String
+  donor            User     @relation("DonorDonations", fields: [donorId], references: [id])
+  productName      String
+  temperatureRange String   // FROZEN | CHILLED | AMBIENT
+  bestBeforeDate   String   // YYYY-MM-DD (date only, no timezone)
+  pickupAddress    String
+  numberOfPallets  Int
+  weightPerPallet  Float
+  overlapStart     DateTime // pickup window start
+  overlapEnd       DateTime // pickup window end
+  status           String   @default("AVAILABLE") // AVAILABLE | CLAIMED | BUNDLED | COMPLETED
+  transportOrderId Int?
+  transportOrder   TransportOrder? @relation(fields: [transportOrderId], references: [id])
+  createdAt        DateTime @default(now())
+
+  claim Claim?
+
+  @@index([status, createdAt])
+  @@index([donorId, createdAt])
+  @@index([transportOrderId])
+}
+
+/// 1:1 assignment of a donation to the institution that picks it up.
+model Claim {
+  id         Int      @id @default(autoincrement())
+  donationId Int      @unique
+  donation   Donation @relation(fields: [donationId], references: [id])
+  foodbankId String
+  foodbank   User     @relation("FoodbankClaims", fields: [foodbankId], references: [id])
+  claimedAt  DateTime @default(now())
+
+  @@index([foodbankId, claimedAt])
+}
+
+/// Consolidated Galliker pickup bundling several donations of one donor.
+model TransportOrder {
+  id         Int      @id @default(autoincrement())
+  donorId    String
+  donor      User     @relation("DonorOrders", fields: [donorId], references: [id])
+  pickupTime DateTime // 12:00 Europe/Zurich on the intersection day
+  status     String   @default("PENDING") // PENDING | DISPATCHED | COMPLETED
+  driverName String?
+  createdAt  DateTime @default(now())
+
+  donations Donation[]
+}
+
+/// A published need of a social institution.
+model Wishlist {
+  id          Int      @id @default(autoincrement())
+  foodbankId  String
+  foodbank    User     @relation("FoodbankWishlists", fields: [foodbankId], references: [id])
+  productName String
+  quantityKg  Float
+  note        String?
+  createdAt   DateTime @default(now())
+}
