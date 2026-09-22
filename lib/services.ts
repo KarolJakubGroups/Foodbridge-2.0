@@ -112,15 +112,6 @@ export async function setOrderStatus(dispatcher: Profile, orderId: number, statu
   });
 }
 
-export async function assignDriver(dispatcher: Profile, orderId: number, driverName: string) {
-  if (dispatcher.role !== 'DISPATCHER') throw new DomainError('Nur Disponenten können Fahrer zuweisen.');
-  const name = driverName.trim();
-  if (!name || name.length > 80) throw new DomainError('Fahrername ist erforderlich (max. 80 Zeichen).');
-  const { count } = await prisma.transportOrder.updateMany({
-    where: { id: orderId, status: { not: 'COMPLETED' } }, data: { driverName: name },
-  });
-  if (count === 0) throw new DomainError('Transportauftrag nicht gefunden oder bereits abgeschlossen.');
-}
 
 // ------------------------------------------------------------- wishlists
 export async function createWishlist(foodbank: Profile, input: WishlistInput) {

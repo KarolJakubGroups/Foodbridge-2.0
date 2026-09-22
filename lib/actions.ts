@@ -71,10 +71,6 @@ export async function setOrderStatus(orderId: number, status: TransportStatus): 
   return run(async () => { await services.setOrderStatus(profile, orderId, status); });
 }
 
-export async function assignDriver(orderId: number, driverName: string): Promise<ActionResult> {
-  const profile = await requireProfile();
-  return run(async () => { await services.assignDriver(profile, orderId, driverName); });
-}
 
 // ------------------------------------------------------------- wishlists
 export async function createWishlist(input: WishlistInput): Promise<ActionResult> {

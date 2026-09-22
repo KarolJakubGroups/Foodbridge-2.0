@@ -82,7 +82,6 @@ model TransportOrder {
   donor      User     @relation("DonorOrders", fields: [donorId], references: [id])
   pickupTime DateTime // 12:00 Europe/Zurich on the intersection day
   status     String   @default("PENDING") // PENDING | DISPATCHED | COMPLETED
-  driverName String?
   createdAt  DateTime @default(now())
 
   donations Donation[]

@@ -145,14 +145,11 @@ describe.skipIf(!hasDb)('Galliker bundling (FA-02)', () => {
 
     await expect(services.setOrderStatus(dispatcher, orderId, 'COMPLETED')).rejects.toThrow(/Ungültiger Statuswechsel/);
     await services.setOrderStatus(dispatcher, orderId, 'DISPATCHED');
-    await services.assignDriver(dispatcher, orderId, 'H. Galliker');
     await services.setOrderStatus(dispatcher, orderId, 'COMPLETED');
 
     const order = await prisma.transportOrder.findUniqueOrThrow({ where: { id: orderId } });
     expect(order.status).toBe('COMPLETED');
-    expect(order.driverName).toBe('H. Galliker');
     expect((await prisma.donation.findUniqueOrThrow({ where: { id: d.id } })).status).toBe('COMPLETED');
-    await expect(services.assignDriver(dispatcher, orderId, 'Someone')).rejects.toThrow(/abgeschlossen/);
     await expect(services.setOrderStatus(foodbank, orderId, 'DISPATCHED')).rejects.toThrow(/Nur Disponenten/);
   });
 });
