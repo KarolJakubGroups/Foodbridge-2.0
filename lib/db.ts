@@ -4,7 +4,9 @@ import { PrismaPg } from '@prisma/adapter-pg';
 function createPrismaClient() {
   const connectionString = process.env.DATABASE_URL;
   if (!connectionString) throw new Error('DATABASE_URL is not set (see .env.example)');
-  return new PrismaClient({ adapter: new PrismaPg({ connectionString }) });
+  // DATABASE_SCHEMA lets tests work in an isolated PostgreSQL schema (see vitest.config.mts).
+  const schema = process.env.DATABASE_SCHEMA || undefined;
+  return new PrismaClient({ adapter: new PrismaPg({ connectionString }, schema ? { schema } : undefined) });
 }
 
 // Reuse one client (and its connection pool) across hot reloads in development.
