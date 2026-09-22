@@ -1,15 +1,77 @@
 import 'server-only';
+import bcrypt from 'bcryptjs';
 import { prisma } from '@/lib/db';
 import { planTransportOrders } from '@/lib/logistics';
 import {
-  CATEGORIES, DomainError, MAX_PALLETS, MAX_WEIGHT_PER_PALLET, TEMPERATURE_RANGES, freshnessCutoff, zurichNoonOf,
-  type TransportStatus,
+  CATEGORIES, DomainError, MAX_PALLETS, MAX_WEIGHT_PER_PALLET, MIN_PASSWORD_LENGTH, TEMPERATURE_RANGES,
+  freshnessCutoff, zurichNoonOf, type TransportStatus,
 } from '@/lib/domain';
-import type { DonationInput, Profile, WishlistInput } from '@/lib/types';
+import type { Application, DonationInput, Profile, RegistrationInput, WishlistInput } from '@/lib/types';
+
+// ---------------------------------------------------------- registration
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function slugify(name: string): string {
+  const base = name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 24);
+  return base.length >= 3 ? base : `spender_${base}`.slice(0, 24);
+}
+
+/** A business applies for a donor account. The account exists immediately but stays PENDING until a foodbank approves it. */
+export async function registerDonor(input: RegistrationInput) {
+  const organizationName = input.organizationName?.trim() ?? '';
+  const address = input.address?.trim() ?? '';
+  const contactName = input.contactName?.trim() ?? '';
+  const phone = input.phone?.trim() ?? '';
+  const email = input.email?.trim().toLowerCase() ?? '';
+
+  if (organizationName.length < 2) throw new DomainError('Bitte den Namen des Unternehmens angeben.');
+  if (address.length < 5) throw new DomainError('Bitte die vollständige Abholadresse angeben.');
+  if (contactName.length < 2) throw new DomainError('Bitte eine Kontaktperson angeben.');
+  if (!EMAIL_RE.test(email)) throw new DomainError('Bitte eine gültige E-Mail-Adresse angeben.');
+  if ((input.password ?? '').length < MIN_PASSWORD_LENGTH) throw new DomainError(`Das Passwort muss mindestens ${MIN_PASSWORD_LENGTH} Zeichen haben.`);
+  if (input.password !== input.passwordConfirm) throw new DomainError('Die Passwörter stimmen nicht überein.');
+
+  if (await prisma.user.findUnique({ where: { email }, select: { id: true } })) {
+    throw new DomainError('Für diese E-Mail-Adresse existiert bereits ein Konto.');
+  }
+  const base = slugify(organizationName);
+  let username = base;
+  for (let i = 2; await prisma.user.findUnique({ where: { username }, select: { id: true } }); i++) {
+    username = `${base}_${i}`;
+  }
+  const passwordHash = await bcrypt.hash(input.password, 10);
+  return prisma.user.create({
+    data: {
+      username, email, passwordHash, role: 'DONOR', status: 'PENDING',
+      organizationName: organizationName.slice(0, 120), address: address.slice(0, 200),
+      contactName: contactName.slice(0, 80), phone: phone.slice(0, 40) || null,
+    },
+  });
+}
+
+/** Foodbank decides on a donor application. */
+export async function reviewDonor(reviewer: Profile, donorId: string, decision: 'APPROVED' | 'REJECTED') {
+  if (reviewer.role !== 'FOODBANK') throw new DomainError('Nur Abgabestellen können Anträge prüfen.');
+  const { count } = await prisma.user.updateMany({
+    where: { id: donorId, role: 'DONOR', status: { not: decision } },
+    data: { status: decision, reviewedAt: new Date() },
+  });
+  if (count === 0) throw new DomainError('Antrag nicht gefunden oder bereits so entschieden.');
+}
+
+export function listApplications(): Promise<Application[]> {
+  return prisma.user.findMany({
+    where: { role: 'DONOR' },
+    select: { id: true, username: true, email: true, organizationName: true, address: true, contactName: true, phone: true, status: true, createdAt: true, reviewedAt: true },
+    orderBy: [{ status: 'asc' }, { createdAt: 'desc' }],
+  }) as Promise<Application[]>;
+}
 
 // ------------------------------------------------------------- donations
 export async function createDonation(donor: Profile, input: DonationInput) {
   if (donor.role !== 'DONOR') throw new DomainError('Nur Spender können Angebote erfassen.');
+  if (donor.status !== 'APPROVED') throw new DomainError('Ihr Spenderkonto ist noch nicht freigegeben.');
 
   const missing: string[] = [];
   if (!input.productName?.trim()) missing.push('Produkt');

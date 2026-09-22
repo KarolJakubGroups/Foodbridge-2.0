@@ -34,6 +34,10 @@ export function fetchTransportOrders(): Promise<TransportOrderWithDetails[]> {
   });
 }
 
+export function countPendingApplications(): Promise<number> {
+  return prisma.user.count({ where: { role: 'DONOR', status: 'PENDING' } });
+}
+
 export function countUnbundledClaimed(): Promise<number> {
   return prisma.donation.count({ where: { status: 'CLAIMED', transportOrderId: null } });
 }

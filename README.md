@@ -46,6 +46,11 @@ Für einen Produktionslauf: `npm run build && npm start`.
 Die Login-Seite hat Schnellauswahl-Buttons für diese Accounts. Der Seed enthält eine 5 Tage alte
 Spende, die durch die 4-Tage-Frist für Abgabestellen unsichtbar bleibt.
 
+**Registrierung neuer Spender:** Unternehmen registrieren sich selbst unter `/register`. Das Konto ist zunächst
+`PENDING`: die Person kann sich anmelden, sieht aber nur einen Hinweis und kann keine Spenden erfassen. Die
+Abgabestelle (`foodbank_zrh`) gibt Anträge im Tab **Anträge** frei oder lehnt sie ab. Es werden keine E-Mails
+verschickt; Antragstellende melden sich später erneut an.
+
 **Demo-Ablauf:** als `migros` eine Spende erfassen → als `foodbank_zrh` reservieren → als
 `dispatcher_gt` „Schnittmengenberechnung starten“ → Auftrag disponieren und abschliessen →
 Wirkungsbilanz unter „Logistik-Netzwerk“.
@@ -61,6 +66,7 @@ Wirkungsbilanz unter „Logistik-Netzwerk“.
 | Abholtermin 12:00 Uhr | `zurichNoonOf` in `lib/domain.ts`: 12:00 Europe/Zurich des Schnittpunkt-Tages |
 | Statusübergänge PENDING → DISPATCHED → COMPLETED | `setOrderStatus`; COMPLETED setzt auch die Spenden auf COMPLETED |
 | Rollenrechte | Jede Service-Funktion prüft die Rolle; Seiten leiten fremde Rollen um (`lib/auth.ts`) |
+| Spender-Verifizierung | `registerDonor` legt Konten als `PENDING` an; `reviewDonor` (nur FOODBANK) setzt `APPROVED`/`REJECTED`; `createDonation` verlangt `APPROVED`; `requireProfile` leitet Unverifizierte nach `/pending` |
 | Wirkungsbilanz | `lib/impact.ts`: kg = Paletten × Gewicht, 2 Mahlzeiten/kg, 1.1 kg CO₂e/kg |
 
 ## Skripte
@@ -93,7 +99,10 @@ in `prisma/migrations` vollständig neu aufgebaut.
 ```
 app/
   login/               Anmeldung
+  register/            Selbstregistrierung für Unternehmen
   (app)/               eingeloggter Bereich mit Header/Navigation
+    pending/           Hinweis für noch nicht freigegebene Spender
+    applications/      Anträge prüfen (nur Abgabestelle)
     donor/             Spender-Dashboard (Erfassung, Bestandsliste, Wirkungsbilanz)
     foodbank/          Abgabestellen-Dashboard (verfügbare Spenden, Reservierungen)
     dispatcher/        Disponenten-Ansicht (Bündelung, Transportaufträge, Status)

@@ -9,7 +9,7 @@ import { requireProfile } from '@/lib/auth';
 import * as services from '@/lib/services';
 import { DomainError, type Role, type TransportStatus } from '@/lib/domain';
 import { ROLE_HOME } from '@/lib/format';
-import type { ActionResult, DonationInput, WishlistInput } from '@/lib/types';
+import type { ActionResult, DonationInput, RegistrationInput, WishlistInput } from '@/lib/types';
 
 const APP_PATHS = ['/donor', '/foodbank', '/dispatcher', '/network', '/wishlist'];
 function revalidateApp() {
@@ -41,6 +41,34 @@ export async function login(_prev: ActionResult | null, formData: FormData): Pro
 
   await createSession(user.id);
   redirect(ROLE_HOME[user.role as Role]);
+}
+
+/** Public self-registration for businesses; logs the new (pending) donor in. */
+export async function register(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
+  const input: RegistrationInput = {
+    organizationName: String(formData.get('organizationName') ?? ''),
+    address: String(formData.get('address') ?? ''),
+    contactName: String(formData.get('contactName') ?? ''),
+    phone: String(formData.get('phone') ?? ''),
+    email: String(formData.get('email') ?? ''),
+    password: String(formData.get('password') ?? ''),
+    passwordConfirm: String(formData.get('passwordConfirm') ?? ''),
+  };
+  let userId: string;
+  try {
+    userId = (await services.registerDonor(input)).id;
+  } catch (e) {
+    if (e instanceof DomainError) return { ok: false, error: e.message };
+    console.error(e);
+    return { ok: false, error: 'Registrierung fehlgeschlagen. Bitte erneut versuchen.' };
+  }
+  await createSession(userId);
+  redirect('/donor');
+}
+
+export async function reviewDonor(donorId: string, decision: 'APPROVED' | 'REJECTED'): Promise<ActionResult> {
+  const profile = await requireProfile();
+  return run(async () => { await services.reviewDonor(profile, donorId, decision); }, ['/applications']);
 }
 
 export async function logout(): Promise<void> {

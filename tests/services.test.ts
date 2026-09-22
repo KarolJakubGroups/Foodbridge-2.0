@@ -16,8 +16,8 @@ import { DomainError, zurichNoonOf } from '@/lib/domain';
 import type { Profile } from '@/lib/types';
 import type { Prisma } from '@/lib/generated/prisma/client';
 
-const profile = (u: { id: string; username: string; role: string; organizationName: string; address: string }): Profile =>
-  ({ id: u.id, username: u.username, email: `${u.username}@test.local`, role: u.role as Profile['role'], organizationName: u.organizationName, address: u.address });
+const profile = (u: { id: string; username: string; role: string; status: string; organizationName: string; address: string }): Profile =>
+  ({ id: u.id, username: u.username, email: `${u.username}@test.local`, role: u.role as Profile['role'], status: u.status as Profile['status'], organizationName: u.organizationName, address: u.address });
 
 let migros: Profile;
 let coop: Profile;
@@ -46,12 +46,57 @@ beforeAll(async () => {
   await prisma.session.deleteMany({});
   await prisma.user.deleteMany({});
   const mk = (username: string, role: string) => prisma.user.create({
-    data: { username, email: `${username}@test.local`, passwordHash: 'x', role, organizationName: username.toUpperCase(), address: 'Zürich' },
+    data: { username, email: `${username}@test.local`, passwordHash: 'x', role, status: 'APPROVED', organizationName: username.toUpperCase(), address: 'Zürich' },
   });
   migros = profile(await mk('migros', 'DONOR'));
   coop = profile(await mk('coop', 'DONOR'));
   foodbank = profile(await mk('foodbank_zrh', 'FOODBANK'));
   dispatcher = profile(await mk('dispatcher_gt', 'DISPATCHER'));
+});
+
+describe.skipIf(!hasDb)('donor registration and verification', () => {
+  const application = {
+    organizationName: 'Denner Filiale Altstetten', address: 'Badenerstrasse 700, 8048 Zürich', contactName: 'A. Muster',
+    phone: '044 123 45 67', email: 'Denner.Altstetten@example.ch', password: 'geheim123', passwordConfirm: 'geheim123',
+  };
+
+  it('creates a PENDING donor with a generated username and lowercased email', async () => {
+    const user = await services.registerDonor(application);
+    expect(user.role).toBe('DONOR');
+    expect(user.status).toBe('PENDING');
+    expect(user.email).toBe('denner.altstetten@example.ch');
+    expect(user.username).toBe('denner_filiale_altstette');
+    expect(user.passwordHash).not.toContain('geheim');
+  });
+
+  it('rejects duplicates, weak passwords and mismatches', async () => {
+    await expect(services.registerDonor(application)).rejects.toThrow(/bereits ein Konto/);
+    await expect(services.registerDonor({ ...application, email: 'x@example.ch', password: 'short', passwordConfirm: 'short' })).rejects.toThrow(/mindestens/);
+    await expect(services.registerDonor({ ...application, email: 'y@example.ch', passwordConfirm: 'other123' })).rejects.toThrow(/stimmen nicht/);
+    const second = await services.registerDonor({ ...application, email: 'z@example.ch' });
+    expect(second.username).toBe('denner_filiale_altstette_2');
+  });
+
+  it('blocks donations until a foodbank approves, then allows them', async () => {
+    const user = await prisma.user.findUniqueOrThrow({ where: { email: 'denner.altstetten@example.ch' } });
+    const pendingProfile = profile(user);
+    const valid = {
+      productName: 'Rüebli', category: 'FRUIT_VEG' as const, temperatureRange: 'CHILLED' as const, bestBeforeDate: bestBefore,
+      pickupAddress: 'Zürich', numberOfPallets: 1, weightPerPallet: 10, overlapStart: inDays(5, 8).toISOString(), overlapEnd: inDays(5, 12).toISOString(),
+    };
+    await expect(services.createDonation(pendingProfile, valid)).rejects.toThrow(/noch nicht freigegeben/);
+
+    await expect(services.reviewDonor(migros, user.id, 'APPROVED')).rejects.toThrow(/Nur Abgabestellen/);
+    await services.reviewDonor(foodbank, user.id, 'APPROVED');
+    const approved = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });
+    expect(approved.status).toBe('APPROVED');
+    expect(approved.reviewedAt).not.toBeNull();
+    await expect(services.createDonation(profile(approved), valid)).resolves.toMatchObject({ status: 'AVAILABLE' });
+
+    await expect(services.reviewDonor(foodbank, user.id, 'APPROVED')).rejects.toThrow(/bereits/);
+    await services.reviewDonor(foodbank, user.id, 'REJECTED');
+    expect((await services.listApplications()).find((a) => a.id === user.id)?.status).toBe('REJECTED');
+  });
 });
 
 describe.skipIf(!hasDb)('donation capture (FA-01)', () => {

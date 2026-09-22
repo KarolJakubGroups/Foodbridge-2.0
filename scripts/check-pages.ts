@@ -13,6 +13,10 @@ const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: proc
 
 async function cookieFor(username: string): Promise<string> {
   const user = await prisma.user.findUniqueOrThrow({ where: { username } });
+  return cookieForId(user.id);
+}
+async function cookieForId(userId: string): Promise<string> {
+  const user = { id: userId };
   const token = randomBytes(32).toString('base64url');
   await prisma.session.create({ data: { id: createHash('sha256').update(token).digest('hex'), userId: user.id, expiresAt: new Date(Date.now() + 3_600_000) } });
   return `fb_session=${token}`;
@@ -44,6 +48,21 @@ await check('network view', '/network', foodbank, 200, ['Logistik-Netzwerk', 'Ge
 await check('wishlist view', '/wishlist', migros, 200, ['Bedarfsanforderungen sozialer Institutionen', 'Reis']);
 await check('logged-in user skips login', '/login', migros, 307, [], [], '/');
 await check('bogus cookie is rejected', '/donor', 'fb_session=nope', 307, [], [], '/login');
+await check('registration page is public', '/register', null, 200, ['Als Spender registrieren', 'Registrierung beantragen']);
+await check('applications tab for foodbank', '/applications', foodbank, 200, ['Offene Anträge', 'Migros Genossenschaft Zürich']);
+await check('applications tab hidden from donors', '/applications', migros, 307, [], [], '/donor');
+
+// A pending donor sees the notice instead of the dashboard, and no navigation.
+const pendingUser = await prisma.user.upsert({
+  where: { email: 'pending.check@example.ch' }, update: { status: 'PENDING' },
+  create: { username: 'pending_check', email: 'pending.check@example.ch', passwordHash: 'x', role: 'DONOR', status: 'PENDING', organizationName: 'Check AG', address: 'Teststrasse 1, 8000 Zürich' },
+});
+const pendingCookie = await cookieForId(pendingUser.id);
+await check('pending donor is sent to /pending', '/donor', pendingCookie, 307, [], [], '/pending');
+await check('pending donor sees review notice', '/pending', pendingCookie, 200, ['Antrag wird geprüft', 'Check AG'], ['Neues Angebot registrieren', 'Logistik-Netzwerk']);
+await check('verified donor skips /pending', '/pending', migros, 307, [], [], '/donor');
+await prisma.session.deleteMany({ where: { userId: pendingUser.id } });
+await prisma.user.delete({ where: { id: pendingUser.id } });
 
 await prisma.$disconnect();
 console.log(failures === 0 ? '\nAll page checks passed.' : `\n${failures} page check(s) failed.`);

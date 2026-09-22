@@ -4,7 +4,7 @@ import { cookies } from 'next/headers';
 import { cache } from 'react';
 import { prisma } from '@/lib/db';
 import type { Profile } from '@/lib/types';
-import type { Role } from '@/lib/domain';
+import type { Role, UserStatus } from '@/lib/domain';
 
 export const SESSION_COOKIE = 'fb_session';
 const SESSION_HOURS = 8;
@@ -35,5 +35,8 @@ export const getSessionProfile = cache(async (): Promise<Profile | null> => {
   const session = await prisma.session.findUnique({ where: { id: hash(token) }, include: { user: true } });
   if (!session || session.expiresAt.getTime() < Date.now()) return null;
   const u = session.user;
-  return { id: u.id, username: u.username, email: u.email, role: u.role as Role, organizationName: u.organizationName, address: u.address };
+  return {
+    id: u.id, username: u.username, email: u.email, role: u.role as Role, status: u.status as UserStatus,
+    organizationName: u.organizationName, address: u.address,
+  };
 });

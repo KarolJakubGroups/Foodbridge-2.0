@@ -9,7 +9,7 @@ const SESSION_COOKIE = 'fb_session';
 export function proxy(request: NextRequest) {
   const hasCookie = request.cookies.has(SESSION_COOKIE);
   const { pathname } = request.nextUrl;
-  const isLogin = pathname === '/login';
+  const isLogin = pathname === '/login' || pathname === '/register';
 
   if (!hasCookie && !isLogin) {
     const url = request.nextUrl.clone();

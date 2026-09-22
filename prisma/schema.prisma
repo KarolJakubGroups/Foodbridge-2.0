@@ -16,8 +16,12 @@ model User {
   email            String   @unique
   passwordHash     String
   role             String   // DONOR | FOODBANK | DISPATCHER
+  status           String   @default("PENDING") // PENDING | APPROVED | REJECTED (donor verification)
   organizationName String
   address          String   @default("")
+  contactName      String?
+  phone            String?
+  reviewedAt       DateTime?
   createdAt        DateTime @default(now())
 
   sessions        Session[]

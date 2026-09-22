@@ -3,9 +3,21 @@ import { getSessionProfile } from '@/lib/session';
 import type { Profile, Role } from '@/lib/types';
 import { ROLE_HOME } from '@/lib/format';
 
-export async function requireProfile(): Promise<Profile> {
+export function isVerified(profile: Profile): boolean {
+  return profile.role !== 'DONOR' || profile.status === 'APPROVED';
+}
+
+/** Any signed-in user, verified or not (app shell, pending page). */
+export async function requireSignedIn(): Promise<Profile> {
   const profile = await getSessionProfile();
   if (!profile) redirect('/login');
+  return profile;
+}
+
+/** Signed-in and verified. Donors whose application is still open are sent to /pending. */
+export async function requireProfile(): Promise<Profile> {
+  const profile = await requireSignedIn();
+  if (!isVerified(profile)) redirect('/pending');
   return profile;
 }
 

@@ -1,4 +1,5 @@
 import { Card } from '@/components/ui';
+import Link from 'next/link';
 import { LoginForm } from '@/components/LoginForm';
 
 export default function LoginPage() {
@@ -14,6 +15,9 @@ export default function LoginPage() {
       <main className="max-w-md mx-auto mt-16 px-4">
         <Card title="Anmeldung FoodBridge 2.0" subtitle="B2B-Plattform zur Lebensmittelrettung der Stiftung Schweizer Tafel">
           <LoginForm />
+          <p className="mt-4 pt-4 border-t border-slate-200 text-xs">
+            Neu als Unternehmen? <Link href="/register" className="font-bold underline">Als Spender registrieren</Link>
+          </p>
         </Card>
       </main>
     </div>

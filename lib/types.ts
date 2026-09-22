@@ -1,11 +1,24 @@
 import type { Claim, Donation, TransportOrder, User, Wishlist } from '@/lib/generated/prisma/client';
-import type { Category, Role, TemperatureRange } from '@/lib/domain';
+import type { Category, Role, TemperatureRange, UserStatus } from '@/lib/domain';
 
-export type { Category, Role, TemperatureRange, DonationStatus, TransportStatus } from '@/lib/domain';
+export type { Category, Role, TemperatureRange, DonationStatus, TransportStatus, UserStatus } from '@/lib/domain';
 export type { Claim, Donation, TransportOrder, Wishlist };
 
 export type UserSummary = Pick<User, 'id' | 'username' | 'organizationName' | 'address'>;
-export type Profile = UserSummary & { email: string; role: Role };
+export type Profile = UserSummary & { email: string; role: Role; status: UserStatus };
+
+/** A donor account as shown in the foodbank's applications tab. */
+export type Application = Pick<User, 'id' | 'username' | 'email' | 'organizationName' | 'address' | 'contactName' | 'phone' | 'createdAt' | 'reviewedAt'> & { status: UserStatus };
+
+export interface RegistrationInput {
+  organizationName: string;
+  address: string;
+  contactName: string;
+  phone: string;
+  email: string;
+  password: string;
+  passwordConfirm: string;
+}
 
 export type DonationWithDonor = Donation & { donor: UserSummary };
 export type ClaimWithDonation = Claim & { donation: DonationWithDonor };

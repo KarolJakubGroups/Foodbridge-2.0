@@ -1,5 +1,7 @@
 /** Domain constants and rules shared by services, actions and UI. */
 export const ROLES = ['DONOR', 'FOODBANK', 'DISPATCHER'] as const;
+/** Verification state of an account. Self-registered donors start PENDING. */
+export const USER_STATUSES = ['PENDING', 'APPROVED', 'REJECTED'] as const;
 export const TEMPERATURE_RANGES = ['FROZEN', 'CHILLED', 'AMBIENT'] as const;
 /** Product categories (Warengruppen) a donation is classified into. */
 export const CATEGORIES = ['MEAT_FISH', 'DAIRY_EGGS', 'FRUIT_VEG', 'BAKERY', 'DRY_GOODS', 'BEVERAGES', 'READY_MEALS', 'OTHER'] as const;
@@ -7,6 +9,7 @@ export const DONATION_STATUSES = ['AVAILABLE', 'CLAIMED', 'BUNDLED', 'COMPLETED'
 export const TRANSPORT_STATUSES = ['PENDING', 'DISPATCHED', 'COMPLETED'] as const;
 
 export type Role = (typeof ROLES)[number];
+export type UserStatus = (typeof USER_STATUSES)[number];
 export type TemperatureRange = (typeof TEMPERATURE_RANGES)[number];
 export type Category = (typeof CATEGORIES)[number];
 export type DonationStatus = (typeof DONATION_STATUSES)[number];
@@ -22,6 +25,7 @@ export function freshnessCutoff(now = new Date()): Date {
 /** Statuses in which a donation counts as rescued for the impact report. */
 export const RESCUED_STATUSES: DonationStatus[] = ['CLAIMED', 'BUNDLED', 'COMPLETED'];
 
+export const MIN_PASSWORD_LENGTH = 8;
 export const MAX_PALLETS = 66;
 export const MAX_WEIGHT_PER_PALLET = 1500;
 
