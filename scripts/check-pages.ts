@@ -36,7 +36,7 @@ const [migros, foodbank, dispatcher] = await Promise.all([cookieFor('migros'), c
 
 await check('anonymous is redirected', '/donor', null, 307, [], [], '/login');
 await check('login page renders', '/login', null, 200, ['Anmeldung FoodBridge 2.0', 'foodbank_zrh']);
-await check('donor dashboard', '/donor', migros, 200, ['Spender-Verwaltung: MIGROS', 'Neues Angebot registrieren', 'Äpfel Gala', 'CO₂-Einsparung']);
+await check('donor dashboard', '/donor', migros, 200, ['Spender: Migros Genossenschaft Zürich', 'Neues Angebot registrieren', 'Äpfel Gala', 'Gerettet:']);
 await check('donor cannot open foodbank view', '/foodbank', migros, 307, [], [], '/donor');
 await check('foodbank dashboard hides stale donation (TF-03)', '/foodbank', foodbank, 200, ['Abgabestelle Allokation: FOODBANK_ZRH', 'Milch UHT 1l'], ['Joghurt Nature']);
 await check('dispatcher dashboard', '/dispatcher', dispatcher, 200, ['Galliker Logistik-Konsolidierungszentrum', 'Schnittmengenberechnung starten']);

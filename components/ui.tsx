@@ -27,7 +27,7 @@ export function Card({
   return (
     <section className={`bg-white border border-slate-200 rounded-md shadow-sm ${className}`}>
       {(title || actions) && (
-        <header className="flex flex-wrap items-start justify-between gap-3 px-5 py-4 border-b border-slate-200">
+        <header className="flex flex-wrap items-start justify-between gap-3 px-4 py-3 md:px-5 md:py-4 border-b border-slate-200">
           <div>
             {title && <h2 className="text-sm font-bold text-slate-900">{title}</h2>}
             {subtitle && <p className="text-xs text-slate-500 mt-0.5">{subtitle}</p>}
@@ -35,7 +35,7 @@ export function Card({
           {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
         </header>
       )}
-      <div className="px-5 py-4">{children}</div>
+      <div className="px-4 py-3 md:px-5 md:py-4">{children}</div>
     </section>
   );
 }
@@ -49,14 +49,15 @@ export function Field({ label, children }: { label: string; children: ReactNode 
   );
 }
 
+// Inputs are 16px on phones (prevents iOS auto-zoom) and at least 44px tall for touch.
 export const inputCls =
-  'w-full border border-slate-300 rounded px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-400';
+  'w-full border border-slate-300 rounded-md px-3 py-2.5 text-base md:text-sm md:py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-slate-400';
 export const btnPrimary =
-  'bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold px-4 py-2 rounded disabled:opacity-50';
+  'bg-emerald-700 hover:bg-emerald-800 active:bg-emerald-900 text-white text-sm md:text-xs font-bold px-4 py-3 md:py-2 rounded-md disabled:opacity-50 min-h-11 md:min-h-0';
 export const btnDark =
-  'bg-slate-900 hover:bg-slate-700 text-white text-xs font-bold px-3 py-1.5 rounded disabled:opacity-50';
+  'bg-slate-900 hover:bg-slate-700 text-white text-sm md:text-xs font-bold px-4 py-2.5 md:px-3 md:py-1.5 rounded-md disabled:opacity-50 min-h-11 md:min-h-0';
 export const btnGhost =
-  'border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-bold px-3 py-1.5 rounded disabled:opacity-50';
+  'border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm md:text-xs font-bold px-4 py-2.5 md:px-3 md:py-1.5 rounded-md disabled:opacity-50 min-h-11 md:min-h-0';
 
 export function Alert({ kind = 'error', children, onClose }: {
   kind?: 'error' | 'ok'; children: ReactNode; onClose?: () => void;
@@ -101,8 +102,10 @@ export const tdCls = 'px-3 py-2 align-top';
 export function ImpactChip({ impact }: { impact: ImpactReport | null }) {
   if (!impact) return null;
   return (
-    <div className="font-mono text-[11px] bg-slate-50 border border-slate-200 rounded px-3 py-2 text-slate-700">
-      CO₂-Einsparung: <b>{fmtKg(impact.co2SavedKg)}</b> | Mahlzeiten: <b>{fmtNumber(impact.meals, 0)}</b> | Gerettet: <b>{fmtKg(impact.totalWeightKg)}</b>
+    <div className="font-mono text-[11px] bg-slate-50 border border-slate-200 rounded px-3 py-2 text-slate-700 flex flex-wrap gap-x-3 gap-y-1">
+      <span>Gerettet: <b>{fmtKg(impact.totalWeightKg)}</b></span>
+      <span>Mahlzeiten: <b>{fmtNumber(impact.meals, 0)}</b></span>
+      <span>CO₂: <b>{fmtKg(impact.co2SavedKg)}</b></span>
     </div>
   );
 }
