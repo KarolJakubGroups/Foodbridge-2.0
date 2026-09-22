@@ -13,7 +13,7 @@ export default async function DispatcherPage() {
   return (
     <div className="space-y-4">
       <Card title="Galliker Logistik-Konsolidierungszentrum"
-        subtitle="Mathematische Schnittmengenberechnung zur Optimierung von Abholfenstern (Intervall-Scheduling).">
+        subtitle="Reservierte Spenden mit überlappenden Abholfenstern werden pro Spender zu einem Galliker-Auftrag zusammengefasst. Der Vorschlag lässt sich vor dem Erstellen anpassen.">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <p className="font-mono text-[11px] text-slate-600">Beanspruchte Spenden ohne Transportauftrag: <b>{claimedCount}</b></p>
           <div className="flex-1 min-w-64"><BundleButton /></div>

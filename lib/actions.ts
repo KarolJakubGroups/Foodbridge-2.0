@@ -9,7 +9,7 @@ import { requireProfile } from '@/lib/auth';
 import * as services from '@/lib/services';
 import { DomainError, type Role, type TransportStatus } from '@/lib/domain';
 import { ROLE_HOME } from '@/lib/format';
-import type { ActionResult, DonationInput, RegistrationInput, WishlistInput } from '@/lib/types';
+import type { ActionResult, BundleRequest, DonationInput, PlannedGroup, RegistrationInput, WishlistInput } from '@/lib/types';
 
 const APP_PATHS = ['/donor', '/foodbank', '/dispatcher', '/network', '/wishlist'];
 function revalidateApp() {
@@ -89,9 +89,16 @@ export async function claimDonation(donationId: number): Promise<ActionResult> {
 }
 
 // ------------------------------------------------------------- logistics
-export async function runBundling(): Promise<ActionResult<{ orders: number; positions: number }>> {
+/** Computes the bundling proposal for the preview dialog. Writes nothing. */
+export async function previewBundling(): Promise<ActionResult<PlannedGroup[]>> {
   const profile = await requireProfile();
-  return run(() => services.runBundling(profile));
+  return run(() => services.planBundling(profile), []);
+}
+
+/** Persists the bundles the dispatcher confirmed (possibly edited) in the dialog. */
+export async function applyBundling(bundles: BundleRequest[]): Promise<ActionResult<{ orders: number; positions: number }>> {
+  const profile = await requireProfile();
+  return run(() => services.createTransportOrders(profile, bundles));
 }
 
 export async function setOrderStatus(orderId: number, status: TransportStatus): Promise<ActionResult> {

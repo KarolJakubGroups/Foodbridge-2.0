@@ -44,6 +44,23 @@ export interface WishlistInput {
   note: string;
 }
 
+/** One donation as shown in the bundling preview. */
+export type PlannedDonation = Pick<Donation, 'id' | 'productName' | 'category' | 'temperatureRange' | 'numberOfPallets' | 'weightPerPallet' | 'overlapStart' | 'overlapEnd'>;
+export interface PlannedOrder {
+  key: string;
+  pickupTime: Date;
+  donations: PlannedDonation[];
+}
+export interface PlannedGroup {
+  donor: UserSummary;
+  orders: PlannedOrder[];
+}
+/** A bundle the dispatcher confirms: donations of one donor that share a pickup. */
+export interface BundleRequest {
+  donorId: string;
+  donationIds: number[];
+}
+
 export type ActionResult<T = void> = { ok: true; data?: T } | { ok: false; error: string };
 
 /** Demo accounts created by `npm run seed`. */

@@ -6,7 +6,7 @@ import {
   CATEGORIES, DomainError, MAX_PALLETS, MAX_WEIGHT_PER_PALLET, MIN_PASSWORD_LENGTH, TEMPERATURE_RANGES,
   freshnessCutoff, zurichNoonOf, type TransportStatus,
 } from '@/lib/domain';
-import type { Application, DonationInput, Profile, RegistrationInput, WishlistInput } from '@/lib/types';
+import type { Application, BundleRequest, DonationInput, PlannedGroup, Profile, RegistrationInput, WishlistInput } from '@/lib/types';
 
 // ---------------------------------------------------------- registration
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -129,31 +129,85 @@ export async function claimDonation(foodbank: Profile, donationId: number) {
 }
 
 // ------------------------------------------------------------- logistics
-/** Runs the Galliker consolidation over all CLAIMED donations not yet in an order. */
-export async function runBundling(dispatcher: Profile): Promise<{ orders: number; positions: number }> {
+const plannedSelect = {
+  id: true, productName: true, category: true, temperatureRange: true, numberOfPallets: true, weightPerPallet: true,
+  overlapStart: true, overlapEnd: true,
+} as const;
+
+/** Pickup of a bundle: 12:00 Europe/Zurich on the day of the earliest window end. */
+export function bundlePickupTime(donations: { overlapEnd: Date }[]): Date {
+  const earliestEnd = donations.reduce((min, d) => (d.overlapEnd < min ? d.overlapEnd : min), donations[0].overlapEnd);
+  return zurichNoonOf(earliestEnd);
+}
+
+/** Computes the Galliker consolidation proposal without writing anything. */
+export async function planBundling(dispatcher: Profile): Promise<PlannedGroup[]> {
   if (dispatcher.role !== 'DISPATCHER') throw new DomainError('Nur Disponenten können bündeln.');
+  const claimed = await prisma.donation.findMany({
+    where: { status: 'CLAIMED', transportOrderId: null },
+    select: { ...plannedSelect, donorId: true, donor: { select: { id: true, username: true, organizationName: true, address: true } } },
+    orderBy: { overlapEnd: 'asc' },
+  });
+  const groups = new Map<string, PlannedGroup>();
+  for (const { donorId, bundle } of planTransportOrders(claimed)) {
+    const donor = bundle.donations[0].donor;
+    const group = groups.get(donorId) ?? { donor, orders: [] };
+    group.orders.push({
+      key: `${donorId}-${group.orders.length + 1}`,
+      pickupTime: bundlePickupTime(bundle.donations),
+      donations: bundle.donations.map((d) => ({
+        id: d.id, productName: d.productName, category: d.category, temperatureRange: d.temperatureRange,
+        numberOfPallets: d.numberOfPallets, weightPerPallet: d.weightPerPallet, overlapStart: d.overlapStart, overlapEnd: d.overlapEnd,
+      })),
+    });
+    groups.set(donorId, group);
+  }
+  return [...groups.values()];
+}
+
+/** Persists confirmed bundles (from the preview dialog or the automatic plan) in one transaction. */
+export async function createTransportOrders(dispatcher: Profile, bundles: BundleRequest[]): Promise<{ orders: number; positions: number }> {
+  if (dispatcher.role !== 'DISPATCHER') throw new DomainError('Nur Disponenten können Aufträge erstellen.');
+  const seen = new Set<number>();
+  for (const b of bundles) {
+    if (!b.donorId || !Array.isArray(b.donationIds) || b.donationIds.length === 0) {
+      throw new DomainError('Jeder Auftrag braucht mindestens eine Spende.');
+    }
+    for (const id of b.donationIds) {
+      if (!Number.isInteger(id) || seen.has(id)) throw new DomainError('Eine Spende kann nur in einem Auftrag liegen.');
+      seen.add(id);
+    }
+  }
+  if (bundles.length === 0) return { orders: 0, positions: 0 };
 
   return prisma.$transaction(async (tx) => {
-    const claimed = await tx.donation.findMany({
-      where: { status: 'CLAIMED', transportOrderId: null },
-      select: { id: true, donorId: true, overlapStart: true, overlapEnd: true },
-    });
-    const plan = planTransportOrders(claimed);
     let positions = 0;
-    for (const { donorId, bundle } of plan) {
-      const ids = bundle.donations.map((d) => d.id);
-      const order = await tx.transportOrder.create({
-        data: { donorId, pickupTime: zurichNoonOf(new Date(bundle.bundleEnd)) },
+    for (const { donorId, donationIds } of bundles) {
+      const donations = await tx.donation.findMany({
+        where: { id: { in: donationIds }, donorId, status: 'CLAIMED', transportOrderId: null },
+        select: { id: true, overlapEnd: true },
       });
+      if (donations.length !== donationIds.length) {
+        throw new DomainError('Bündelung abgebrochen: mindestens eine Spende ist nicht mehr reserviert, bereits gebündelt oder gehört einem anderen Spender.');
+      }
+      const order = await tx.transportOrder.create({ data: { donorId, pickupTime: bundlePickupTime(donations) } });
       const { count } = await tx.donation.updateMany({
-        where: { id: { in: ids }, donorId, status: 'CLAIMED', transportOrderId: null },
+        where: { id: { in: donationIds }, donorId, status: 'CLAIMED', transportOrderId: null },
         data: { status: 'BUNDLED', transportOrderId: order.id },
       });
-      if (count !== ids.length) throw new DomainError('Bündelung abgebrochen: Spenden wurden zwischenzeitlich verändert.');
+      if (count !== donationIds.length) throw new DomainError('Bündelung abgebrochen: Spenden wurden zwischenzeitlich verändert.');
       positions += count;
     }
-    return { orders: plan.length, positions };
+    return { orders: bundles.length, positions };
   });
+}
+
+/** Runs the automatic consolidation end to end (plan + persist). */
+export async function runBundling(dispatcher: Profile): Promise<{ orders: number; positions: number }> {
+  const groups = await planBundling(dispatcher);
+  const bundles: BundleRequest[] = groups.flatMap((g) =>
+    g.orders.map((o) => ({ donorId: g.donor.id, donationIds: o.donations.map((d) => d.id) })));
+  return createTransportOrders(dispatcher, bundles);
 }
 
 const TRANSITIONS: Record<string, TransportStatus> = { PENDING: 'DISPATCHED', DISPATCHED: 'COMPLETED' };

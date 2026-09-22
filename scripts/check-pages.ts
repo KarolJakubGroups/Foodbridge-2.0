@@ -43,7 +43,7 @@ await check('login page renders', '/login', null, 200, ['Anmeldung FoodBridge 2.
 await check('donor dashboard', '/donor', migros, 200, ['Spender: Migros Genossenschaft Zürich', 'Neues Angebot registrieren', 'Äpfel Gala', 'Gerettet:']);
 await check('donor cannot open foodbank view', '/foodbank', migros, 307, [], [], '/donor');
 await check('foodbank dashboard hides stale donation (TF-03)', '/foodbank', foodbank, 200, ['Abgabestelle Allokation: FOODBANK_ZRH', 'Milch UHT 1l'], ['Joghurt Nature']);
-await check('dispatcher dashboard', '/dispatcher', dispatcher, 200, ['Galliker Logistik-Konsolidierungszentrum', 'Schnittmengenberechnung starten']);
+await check('dispatcher dashboard', '/dispatcher', dispatcher, 200, ['Galliker Logistik-Konsolidierungszentrum', 'Bündelung vorschlagen']);
 await check('network view', '/network', foodbank, 200, ['Logistik-Netzwerk', 'Gerettetes Gewicht']);
 await check('wishlist view', '/wishlist', migros, 200, ['Bedarfsanforderungen sozialer Institutionen', 'Reis']);
 await check('logged-in user skips login', '/login', migros, 307, [], [], '/');
