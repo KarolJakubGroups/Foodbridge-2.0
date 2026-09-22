@@ -1,14 +1,13 @@
 import { PrismaClient } from '@/lib/generated/prisma/client';
-import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
-
-const DEFAULT_URL = 'file:./prisma/dev.db';
+import { PrismaPg } from '@prisma/adapter-pg';
 
 function createPrismaClient() {
-  const adapter = new PrismaBetterSqlite3({ url: process.env.DATABASE_URL ?? DEFAULT_URL });
-  return new PrismaClient({ adapter });
+  const connectionString = process.env.DATABASE_URL;
+  if (!connectionString) throw new Error('DATABASE_URL is not set (see .env.example)');
+  return new PrismaClient({ adapter: new PrismaPg({ connectionString }) });
 }
 
-// Reuse one client across hot reloads in development.
+// Reuse one client (and its connection pool) across hot reloads in development.
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 export const prisma: PrismaClient = globalForPrisma.prisma ?? createPrismaClient();
 if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma;

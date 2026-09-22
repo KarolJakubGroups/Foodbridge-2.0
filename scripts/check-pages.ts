@@ -1,14 +1,15 @@
 /**
- * Smoke test of the rendered pages against a running dev/prod server and the seeded SQLite DB.
+ * Smoke test of the rendered pages against a running dev/prod server and the seeded database.
  * Creates sessions directly in the database (same mechanism as lib/session.ts).
- *   npx tsx scripts/check-pages.ts [http://localhost:3000]
+ *   npx tsx --env-file=.env scripts/check-pages.ts [http://localhost:3000]
  */
 import { createHash, randomBytes } from 'node:crypto';
 import { PrismaClient } from '../lib/generated/prisma/client';
-import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
+import { PrismaPg } from '@prisma/adapter-pg';
 
 const base = process.argv[2] ?? 'http://localhost:3000';
-const prisma = new PrismaClient({ adapter: new PrismaBetterSqlite3({ url: process.env.DATABASE_URL ?? 'file:./prisma/dev.db' }) });
+if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is not set');
+const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }) });
 
 async function cookieFor(username: string): Promise<string> {
   const user = await prisma.user.findUniqueOrThrow({ where: { username } });

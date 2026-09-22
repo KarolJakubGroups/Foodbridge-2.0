@@ -50,7 +50,4 @@ legacy/frontend/node_modules/
 
 /lib/generated/prisma
 
-# local SQLite database
-prisma/dev.db*
 lib/generated/
-prisma/test.db*

@@ -7,6 +7,8 @@ import { beforeAll, describe, expect, it, vi } from 'vitest';
 // lib/services and lib/queries are server-only modules; neutralise the guard for tests.
 vi.mock('server-only', () => ({}));
 
+const hasDb = Boolean(process.env.TEST_DATABASE_URL);
+
 import { prisma } from '@/lib/db';
 import * as services from '@/lib/services';
 import { fetchAvailableDonations, fetchGlobalImpact } from '@/lib/queries';
@@ -35,6 +37,14 @@ async function insertDonation(donor: Profile, overrides: Partial<Prisma.Donation
 }
 
 beforeAll(async () => {
+  if (!hasDb) return;
+  // start from a clean slate in the test schema
+  await prisma.claim.deleteMany({});
+  await prisma.donation.deleteMany({});
+  await prisma.wishlist.deleteMany({});
+  await prisma.transportOrder.deleteMany({});
+  await prisma.session.deleteMany({});
+  await prisma.user.deleteMany({});
   const mk = (username: string, role: string) => prisma.user.create({
     data: { username, email: `${username}@test.local`, passwordHash: 'x', role, organizationName: username.toUpperCase(), address: 'Zürich' },
   });
@@ -44,7 +54,7 @@ beforeAll(async () => {
   dispatcher = profile(await mk('dispatcher_gt', 'DISPATCHER'));
 });
 
-describe('donation capture (FA-01)', () => {
+describe.skipIf(!hasDb)('donation capture (FA-01)', () => {
   const valid = {
     productName: 'Rüebli', category: 'FRUIT_VEG' as const, temperatureRange: 'CHILLED' as const, bestBeforeDate: bestBefore, pickupAddress: 'Limmatstrasse 152',
     numberOfPallets: 2, weightPerPallet: 250.5, overlapStart: inDays(5, 8).toISOString(), overlapEnd: inDays(5, 12).toISOString(),
@@ -71,7 +81,7 @@ describe('donation capture (FA-01)', () => {
   });
 });
 
-describe('freshness rule (FA-03)', () => {
+describe.skipIf(!hasDb)('freshness rule (FA-03)', () => {
   it('hides donations older than 4 days and refuses to claim them (TF-03)', async () => {
     const stale = await insertDonation(coop, { createdAt: new Date(Date.now() - 5 * 86_400_000) });
     const fresh = await insertDonation(coop, { createdAt: new Date(Date.now() - 3 * 86_400_000) });
@@ -95,7 +105,7 @@ describe('freshness rule (FA-03)', () => {
   });
 });
 
-describe('Galliker bundling (FA-02)', () => {
+describe.skipIf(!hasDb)('Galliker bundling (FA-02)', () => {
   it('bundles overlapping claimed donations per donor with a 12:00 Zurich pickup (TF-04/TF-05)', async () => {
     // clear anything claimed by earlier tests so counts are deterministic
     await prisma.donation.updateMany({ where: { status: 'CLAIMED' }, data: { status: 'COMPLETED' } });
@@ -147,7 +157,7 @@ describe('Galliker bundling (FA-02)', () => {
   });
 });
 
-describe('impact (FA-04)', () => {
+describe.skipIf(!hasDb)('impact (FA-04)', () => {
   it('counts only rescued donations', async () => {
     await prisma.claim.deleteMany({});
     await prisma.donation.deleteMany({});
@@ -158,7 +168,7 @@ describe('impact (FA-04)', () => {
   });
 });
 
-describe('wishlists', () => {
+describe.skipIf(!hasDb)('wishlists', () => {
   it('are owned by the publishing foodbank', async () => {
     const w = await services.createWishlist(foodbank, { productName: 'Reis', quantityKg: 50, note: '' });
     await expect(services.createWishlist(migros, { productName: 'Nope', quantityKg: 1, note: '' })).rejects.toThrow(/Nur Abgabestellen/);

@@ -5,25 +5,32 @@ Detailhändler (Spender) erfassen überschüssige Lebensmittel, soziale Institut
 beanspruchen sie, und ein Intervall-Scheduling-Algorithmus bündelt überlappende Abholfenster zu
 Transportaufträgen für Galliker Logistics.
 
-Die Anwendung ist vollständig eigenständig: kein Cloud-Account, keine externen Dienste. Sie läuft mit
-einer lokalen SQLite-Datei und lässt sich über Prisma auf PostgreSQL umstellen.
+Die Daten liegen in einer PostgreSQL-Datenbank auf Supabase; der Zugriff läuft über Prisma. Es wird
+ausschliesslich die Datenbank von Supabase genutzt (kein Supabase Auth, keine Edge Functions), daher
+lässt sich die Datenbank jederzeit auf ein anderes Supabase-Projekt oder einen beliebigen
+PostgreSQL-Server umziehen: nur `DATABASE_URL` ändern und `npm run setup` ausführen.
 
 ## Tech Stack
 
 - **Next.js 16** (App Router, Server Components, Server Actions), React 19, TypeScript, Tailwind CSS 4
-- **Prisma 7** mit **SQLite** (lokal) – Datenbankschema in `prisma/schema.prisma`, Migrationen in `prisma/migrations`
+- **Prisma 7** mit **PostgreSQL (Supabase)** – Datenbankschema in `prisma/schema.prisma`, Migrationen in `prisma/migrations`
 - Eigene Session-Authentifizierung (bcrypt-Passwörter, HttpOnly-Cookie, Sessions in der DB)
 - **Vitest** für Unit- und Integrationstests
 
 ## Schnellstart
 
-Voraussetzung: Node.js 22 oder neuer.
+Voraussetzungen: Node.js 22 oder neuer und ein Supabase-Projekt (oder eine andere PostgreSQL-Datenbank).
 
 ```bash
 npm install
-npm run setup     # Migrationen einspielen, Prisma-Client generieren, Demo-Daten anlegen
-npm run dev       # http://localhost:3000
+cp .env.example .env   # DATABASE_URL eintragen: Supabase -> Connect -> "Session pooler"
+npm run setup          # Migrationen einspielen, Prisma-Client generieren, Demo-Daten anlegen
+npm run dev            # http://localhost:3000
 ```
+
+Verbindungsstring: im Supabase-Dashboard oben auf **Connect** klicken, Methode **Session pooler**
+wählen und den String mit dem Datenbank-Passwort in `.env` als `DATABASE_URL` eintragen. Der Session
+pooler (Port 5432) ist IPv4-fähig und unterstützt Transaktionen, die die Geschäftslogik benötigt.
 
 Für einen Produktionslauf: `npm run build && npm start`.
 
@@ -62,23 +69,24 @@ Wirkungsbilanz unter „Logistik-Netzwerk“.
 npm run dev          # Entwicklungsserver
 npm run build        # Produktions-Build (generiert vorher den Prisma-Client)
 npm start            # Produktionsserver
-npm test             # Unit- und Integrationstests (eigene Test-DB prisma/test.db)
+npm test             # Unit- und Integrationstests (eigenes Schema "foodbridge_test" in der Datenbank)
 npm run lint         # ESLint
 npm run typecheck    # TypeScript
 npm run setup        # Migrationen + Client + Seed (Erstinstallation)
 npm run seed         # Demo-Daten anlegen (idempotent)
-npm run db:reset     # Datenbank neu aufsetzen, danach `npm run seed`
+npm run db:deploy    # ausstehende Migrationen einspielen (z. B. nach dem Wechsel der Datenbank)
+npm run db:reset     # Datenbank leeren und neu aufsetzen (Seed läuft automatisch)
 npm run db:studio    # Prisma Studio zum Durchsehen der Daten
 ```
 
-Smoke-Test der gerenderten Seiten gegen einen laufenden Server: `npx tsx scripts/check-pages.ts`.
+Smoke-Test der gerenderten Seiten gegen einen laufenden Server: `npx tsx --env-file=.env scripts/check-pages.ts`.
 
-## Auf PostgreSQL umstellen
+## Datenbank übergeben oder umziehen
 
-1. In `prisma/schema.prisma` `provider = "postgresql"` setzen.
-2. `DATABASE_URL` als Umgebungsvariable setzen (z. B. in `.env`).
-3. In `lib/db.ts` und `prisma/seed.ts` den Adapter `@prisma/adapter-better-sqlite3` durch `@prisma/adapter-pg` ersetzen.
-4. `npx prisma migrate dev --name init` ausführen (neue Migrationen für Postgres erzeugen).
+Das Supabase-Projekt kann im Dashboard an eine andere Organisation übertragen werden
+(Project Settings → General → Transfer project). Alternativ genügt für einen Umzug auf einen anderen
+PostgreSQL-Server ein neuer `DATABASE_URL` und `npm run setup`; das Schema wird durch die Migrationen
+in `prisma/migrations` vollständig neu aufgebaut.
 
 ## Projektstruktur
 
@@ -99,8 +107,8 @@ lib/
   session.ts, auth.ts  Sessions und Rollenprüfung
   logistics.ts         Intervall-Scheduling-Algorithmus
   impact.ts, domain.ts Wirkungsbilanz, Konstanten, Regeln
-  db.ts                Prisma-Client (SQLite-Adapter)
-prisma/                Schema, Migrationen, Seed, lokale Datenbank (dev.db, nicht versioniert)
+  db.ts                Prisma-Client (PostgreSQL-Adapter)
+prisma/                Schema, Migrationen, Seed
 proxy.ts               Optimistische Login-Umleitung (Next.js Proxy, früher Middleware)
 tests/                 Integrationstests der Geschäftsregeln
 scripts/check-pages.ts Smoke-Test der Seiten

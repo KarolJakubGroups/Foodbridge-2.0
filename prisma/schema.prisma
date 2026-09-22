@@ -1,6 +1,5 @@
-// FoodBridge 2.0 data model. Enum-like columns are strings so the schema runs
-// unchanged on SQLite (local demo) and PostgreSQL (hosted); values are validated
-// in lib/domain.ts.
+// FoodBridge 2.0 data model (PostgreSQL on Supabase). Enum-like columns are
+// plain strings; allowed values are validated in lib/domain.ts.
 
 generator client {
   provider = "prisma-client"
@@ -8,7 +7,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
 }
 
 model User {
