@@ -137,6 +137,22 @@ export async function addPalletsToDonation(donor: Profile, donationId: number, a
   });
 }
 
+/** A donor pulls back an offer nobody has reserved yet (goods sold, spoiled or expired). */
+export async function withdrawDonation(donor: Profile, donationId: number) {
+  if (donor.role !== 'DONOR') throw new DomainError('Nur Spender können Angebote zurückziehen.');
+  const existing = await prisma.donation.findUnique({ where: { id: donationId }, select: { donorId: true, status: true, productName: true } });
+  if (!existing || existing.donorId !== donor.id) throw new DomainError('Angebot nicht gefunden.');
+  if (existing.status !== 'AVAILABLE') {
+    throw new DomainError('Das Angebot ist bereits reserviert und kann nicht mehr zurückgezogen werden.');
+  }
+  const { count } = await prisma.donation.updateMany({
+    where: { id: donationId, donorId: donor.id, status: 'AVAILABLE' },
+    data: { status: 'WITHDRAWN' },
+  });
+  if (count === 0) throw new DomainError('Das Angebot wurde zwischenzeitlich reserviert.');
+  return { productName: existing.productName };
+}
+
 // ---------------------------------------------------------------- claims
 /**
  * Atomic claim: the conditional updateMany guarantees a single winner and

@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
-import type { DonationStatus, TransportStatus } from '@/lib/domain';
+import type { DonationState, DonationStatus, TransportStatus } from '@/lib/domain';
+import { STATE_LABEL } from '@/lib/format';
 import type { ImpactReport } from '@/lib/impact';
 import { fmtKg, fmtNumber } from '@/lib/format';
 
@@ -10,7 +11,26 @@ const BADGE_STYLES: Record<DonationStatus | TransportStatus, string> = {
   COMPLETED: 'bg-slate-200 text-slate-700 border-slate-300',
   PENDING: 'bg-amber-100 text-amber-800 border-amber-200',
   DISPATCHED: 'bg-indigo-100 text-indigo-800 border-indigo-200',
+  WITHDRAWN: 'bg-slate-100 text-slate-600 border-slate-200',
 };
+
+const STATE_STYLES: Record<DonationState, string> = {
+  OPEN: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+  EXPIRED: 'bg-red-100 text-red-800 border-red-200',
+  RESERVED: 'bg-amber-100 text-amber-800 border-amber-200',
+  SCHEDULED: 'bg-sky-100 text-sky-800 border-sky-200',
+  COLLECTED: 'bg-slate-200 text-slate-700 border-slate-300',
+  WITHDRAWN: 'bg-slate-100 text-slate-600 border-slate-200',
+};
+
+/** Business state in plain German, for everything a donor or institution sees. */
+export function StateBadge({ state }: { state: DonationState }) {
+  return (
+    <span className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded border whitespace-nowrap ${STATE_STYLES[state]}`}>
+      {STATE_LABEL[state]}
+    </span>
+  );
+}
 
 export function Badge({ status }: { status: string }) {
   const style = BADGE_STYLES[status as DonationStatus | TransportStatus] ?? 'bg-slate-100 text-slate-700 border-slate-200';

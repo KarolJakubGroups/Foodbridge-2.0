@@ -89,6 +89,12 @@ export async function addPallets(donationId: number, additionalPallets: number):
   return run(() => services.addPalletsToDonation(profile, donationId, additionalPallets));
 }
 
+/** Pulls back an own, unreserved offer. */
+export async function withdrawDonation(donationId: number): Promise<ActionResult<{ productName: string }>> {
+  const profile = await requireProfile();
+  return run(() => services.withdrawDonation(profile, donationId));
+}
+
 // ---------------------------------------------------------------- claims
 export async function claimDonation(donationId: number): Promise<ActionResult> {
   const profile = await requireProfile();

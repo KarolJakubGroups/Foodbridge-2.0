@@ -58,6 +58,8 @@ async function main() {
     base(coop, 'Tiefkühl-Gemüse', 'FRUIT_VEG', 'FROZEN', 90, 1, 250, days(2), days(3), hoursAgo(1), 'AVAILABLE'),
     // Older than 4 days -> hidden from foodbanks by the freshness rule (TF-03)
     base(coop, 'Joghurt Nature', 'DAIRY_EGGS', 'CHILLED', 5, 1, 60, days(1), days(2), hoursAgo(5 * 24), 'AVAILABLE'),
+    // Nobody reserved this in time: shows as "Abgelaufen" on the donor dashboard
+    base(migros, 'Blattsalat', 'FRUIT_VEG', 'CHILLED', 2, 1, 15, days(1), days(2), hoursAgo(5 * 24), 'AVAILABLE'),
   ];
   let claims = 0;
   for (const row of rows) {
@@ -73,7 +75,24 @@ async function main() {
       { foodbankId: foodbank.id, productName: 'Milchprodukte', quantityKg: 100, note: 'Joghurt, Käse (gekühlt)', createdAt: hoursAgo(5) },
     ],
   });
-  console.log(`seeded ${rows.length} donations, ${claims} claims, 2 wishlist entries`);
+  // One pickup is already planned so the donor dashboard shows "Nächste Abholung"
+  // from the start; Orangen and Bananen stay reserved for the bundling demo.
+  const planned = await prisma.donation.findMany({
+    where: { donorId: migros.id, productName: { in: ['Äpfel Gala', 'Birnen'] } },
+    select: { id: true, overlapEnd: true },
+  });
+  if (planned.length > 0) {
+    const earliestEnd = planned.reduce((min, d) => (d.overlapEnd < min ? d.overlapEnd : min), planned[0].overlapEnd);
+    const pickupTime = new Date(earliestEnd);
+    pickupTime.setHours(12, 0, 0, 0);
+    const order = await prisma.transportOrder.create({ data: { donorId: migros.id, pickupTime } });
+    await prisma.donation.updateMany({
+      where: { id: { in: planned.map((d) => d.id) } },
+      data: { status: 'BUNDLED', transportOrderId: order.id },
+    });
+  }
+
+  console.log(`seeded ${rows.length} donations, ${claims} claims, 1 transport order, 2 wishlist entries`);
 }
 
 main().catch((e) => { console.error(e); process.exit(1); }).finally(() => prisma.$disconnect());

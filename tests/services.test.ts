@@ -161,6 +161,32 @@ describe.skipIf(!hasDb)('adding pallets to an existing offer', () => {
   });
 });
 
+describe.skipIf(!hasDb)('withdrawing an offer', () => {
+  it('removes an unreserved offer from the institutions view', async () => {
+    const d = await insertDonation(migros, { productName: 'Zurückzuziehen' });
+    expect((await fetchAvailableDonations()).some((x) => x.id === d.id)).toBe(true);
+
+    const result = await services.withdrawDonation(migros, d.id);
+    expect(result).toEqual({ productName: 'Zurückzuziehen' });
+    expect((await prisma.donation.findUniqueOrThrow({ where: { id: d.id } })).status).toBe('WITHDRAWN');
+    expect((await fetchAvailableDonations()).some((x) => x.id === d.id)).toBe(false);
+    await expect(services.claimDonation(foodbank, d.id)).rejects.toThrow(/nicht mehr verfügbar/);
+  });
+
+  it('refuses reserved offers, foreign offers and other roles', async () => {
+    const mine = await insertDonation(migros, { productName: 'Meins' });
+    const foreign = await insertDonation(coop, { productName: 'Fremd' });
+    const claimed = await insertDonation(migros, { productName: 'Vergeben' });
+    await services.claimDonation(foodbank, claimed.id);
+
+    await expect(services.withdrawDonation(migros, foreign.id)).rejects.toThrow(/nicht gefunden/);
+    await expect(services.withdrawDonation(migros, claimed.id)).rejects.toThrow(/bereits reserviert/);
+    await expect(services.withdrawDonation(foodbank, mine.id)).rejects.toThrow(/Nur Spender/);
+    await expect(services.withdrawDonation(migros, mine.id)).resolves.toBeTruthy();
+    await expect(services.withdrawDonation(migros, mine.id)).rejects.toThrow(/bereits reserviert/);
+  });
+});
+
 describe.skipIf(!hasDb)('freshness rule (FA-03)', () => {
   it('hides donations older than 4 days and refuses to claim them (TF-03)', async () => {
     const stale = await insertDonation(coop, { createdAt: new Date(Date.now() - 5 * 86_400_000) });

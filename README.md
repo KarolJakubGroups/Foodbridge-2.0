@@ -65,6 +65,9 @@ Wirkungsbilanz unter „Logistik-Netzwerk“.
 | Galliker-Bündelung | Algorithmus in `lib/logistics.ts` (Sortierung nach Fensterende, `start <= bundleEnd`), Persistenz in `runBundling` |
 | Abholtermin 12:00 Uhr | `zurichNoonOf` in `lib/domain.ts`: 12:00 Europe/Zurich des Schnittpunkt-Tages |
 | Statusübergänge PENDING → DISPATCHED → COMPLETED | `setOrderStatus`; COMPLETED setzt auch die Spenden auf COMPLETED |
+| Spender-Dashboard | `lib/dashboard.ts` fasst nächste Abholung, ablaufende Angebote, MHD-Warnungen und Wirkung zusammen (reine Funktionen, unit-getestet) |
+| Angebots-Status | `donationState()` leitet aus Status + 4-Tage-Fenster die Anzeige ab (Offen, Abgelaufen, Reserviert, Abholung geplant, Abgeholt, Zurückgezogen) |
+| Zurückziehen | `withdrawDonation` setzt ein noch nicht reserviertes Angebot auf `WITHDRAWN`; es verschwindet aus der Abgabestellen-Ansicht |
 | Rollenrechte | Jede Service-Funktion prüft die Rolle; Seiten leiten fremde Rollen um (`lib/auth.ts`) |
 | Spender-Verifizierung | `registerDonor` legt Konten als `PENDING` an; `reviewDonor` (nur FOODBANK) setzt `APPROVED`/`REJECTED`; `createDonation` verlangt `APPROVED`; `requireProfile` leitet Unverifizierte nach `/pending` |
 | Wirkungsbilanz | `lib/impact.ts`: kg = Paletten × Gewicht, 2 Mahlzeiten/kg, 1.1 kg CO₂e/kg |

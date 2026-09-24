@@ -2,12 +2,21 @@ import 'server-only';
 import { prisma } from '@/lib/db';
 import { computeImpact, type ImpactReport } from '@/lib/impact';
 import { RESCUED_STATUSES, freshnessCutoff, type Role } from '@/lib/domain';
-import type { ClaimWithDonation, DonationWithDonor, TransportOrderWithDetails, WishlistWithFoodbank } from '@/lib/types';
+import type { ClaimWithDonation, DonationWithDonor, DonorDonation, TransportOrderWithDetails, WishlistWithFoodbank } from '@/lib/types';
 
 const userSummary = { select: { id: true, username: true, organizationName: true, address: true } } as const;
 
-export function fetchMyDonations(donorId: string): Promise<DonationWithDonor[]> {
-  return prisma.donation.findMany({ where: { donorId }, include: { donor: userSummary }, orderBy: { createdAt: 'desc' } });
+/** Own donations enriched with the planned pickup and the receiving institution. */
+export function fetchMyDonations(donorId: string): Promise<DonorDonation[]> {
+  return prisma.donation.findMany({
+    where: { donorId },
+    include: {
+      donor: userSummary,
+      transportOrder: { select: { id: true, pickupTime: true, status: true } },
+      claim: { select: { foodbank: { select: { organizationName: true } } } },
+    },
+    orderBy: { createdAt: 'desc' },
+  });
 }
 
 /** AVAILABLE donations that still satisfy the 4-day freshness rule. */

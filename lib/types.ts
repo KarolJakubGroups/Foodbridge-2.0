@@ -21,6 +21,11 @@ export interface RegistrationInput {
 }
 
 export type DonationWithDonor = Donation & { donor: UserSummary };
+/** Own donation plus the facts a donor needs: planned pickup and receiving institution. */
+export type DonorDonation = DonationWithDonor & {
+  transportOrder: { id: number; pickupTime: Date; status: string } | null;
+  claim: { foodbank: { organizationName: string } } | null;
+};
 export type ClaimWithDonation = Claim & { donation: DonationWithDonor };
 export type TransportOrderWithDetails = TransportOrder & { donor: UserSummary; donations: Donation[] };
 export type WishlistWithFoodbank = Wishlist & { foodbank: UserSummary };

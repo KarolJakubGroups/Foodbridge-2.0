@@ -1,4 +1,4 @@
-import type { Category, Role, TemperatureRange } from './domain';
+import type { Category, DonationState, Role, TemperatureRange } from './domain';
 
 const ZURICH = 'Europe/Zurich';
 
@@ -62,6 +62,15 @@ export const CATEGORIES_OPTIONS = (Object.entries(CATEGORY_LABEL) as [Category, 
 export function categoryLabel(value: string): string {
   return CATEGORY_LABEL[value as Category] ?? value;
 }
+
+export const STATE_LABEL: Record<DonationState, string> = {
+  OPEN: 'Offen',
+  EXPIRED: 'Abgelaufen',
+  RESERVED: 'Reserviert',
+  SCHEDULED: 'Abholung geplant',
+  COLLECTED: 'Abgeholt',
+  WITHDRAWN: 'Zurückgezogen',
+};
 
 export const ROLE_LABEL: Record<Role, string> = {
   DONOR: 'Spender',

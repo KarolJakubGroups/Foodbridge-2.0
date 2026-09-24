@@ -5,7 +5,9 @@ export const USER_STATUSES = ['PENDING', 'APPROVED', 'REJECTED'] as const;
 export const TEMPERATURE_RANGES = ['FROZEN', 'CHILLED', 'AMBIENT'] as const;
 /** Product categories (Warengruppen) a donation is classified into. */
 export const CATEGORIES = ['MEAT_FISH', 'DAIRY_EGGS', 'FRUIT_VEG', 'BAKERY', 'DRY_GOODS', 'BEVERAGES', 'READY_MEALS', 'OTHER'] as const;
-export const DONATION_STATUSES = ['AVAILABLE', 'CLAIMED', 'BUNDLED', 'COMPLETED'] as const;
+export const DONATION_STATUSES = ['AVAILABLE', 'CLAIMED', 'BUNDLED', 'COMPLETED', 'WITHDRAWN'] as const;
+/** What a donor is shown. Derived from the stored status plus the freshness window. */
+export const DONATION_STATES = ['OPEN', 'EXPIRED', 'RESERVED', 'SCHEDULED', 'COLLECTED', 'WITHDRAWN'] as const;
 export const TRANSPORT_STATUSES = ['PENDING', 'DISPATCHED', 'COMPLETED'] as const;
 
 export type Role = (typeof ROLES)[number];
@@ -13,6 +15,7 @@ export type UserStatus = (typeof USER_STATUSES)[number];
 export type TemperatureRange = (typeof TEMPERATURE_RANGES)[number];
 export type Category = (typeof CATEGORIES)[number];
 export type DonationStatus = (typeof DONATION_STATUSES)[number];
+export type DonationState = (typeof DONATION_STATES)[number];
 export type TransportStatus = (typeof TRANSPORT_STATUSES)[number];
 
 /** Schweizer Tafel freshness rule: donations older than this are neither shown nor claimable. */
@@ -34,6 +37,23 @@ export class DomainError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'DomainError';
+  }
+}
+
+/** When an offer stops being visible to institutions. */
+export function visibleUntil(createdAt: Date): Date {
+  return new Date(createdAt.getTime() + FRESHNESS_DAYS * 86_400_000);
+}
+
+/** Business state of a donation: an unreserved offer past the 4-day window counts as expired. */
+export function donationState(d: { status: string; createdAt: Date }, now = new Date()): DonationState {
+  switch (d.status) {
+    case 'AVAILABLE': return d.createdAt > freshnessCutoff(now) ? 'OPEN' : 'EXPIRED';
+    case 'CLAIMED': return 'RESERVED';
+    case 'BUNDLED': return 'SCHEDULED';
+    case 'COMPLETED': return 'COLLECTED';
+    case 'WITHDRAWN': return 'WITHDRAWN';
+    default: return 'OPEN';
   }
 }
 
