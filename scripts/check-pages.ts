@@ -44,7 +44,9 @@ await check('donor dashboard', '/donor', migros, 200, ['Spender: Migros Genossen
 await check('donor cannot open foodbank view', '/foodbank', migros, 307, [], [], '/donor');
 await check('foodbank dashboard hides stale donation (TF-03)', '/foodbank', foodbank, 200, ['Abgabestelle Allokation: FOODBANK_ZRH', 'Milch UHT 1l'], ['Joghurt Nature']);
 await check('dispatcher dashboard', '/dispatcher', dispatcher, 200, ['Galliker Logistik-Konsolidierungszentrum', 'Bündelung vorschlagen']);
-await check('network view', '/network', foodbank, 200, ['Logistik-Netzwerk', 'Gerettetes Gewicht']);
+await check('network view for foodbank', '/network', foodbank, 200, ['Meine Lieferungen', 'Gerettetes Gewicht']);
+await check('network view for dispatcher is national', '/network', dispatcher, 200, ['Logistik-Netzwerk', 'Alle Transportaufträge']);
+await check('network view for donor shows only own data', '/network', migros, 200, ['Meine Transporte'], ['Riedstrasse 10', 'Coop Verteilzentrale']);
 await check('wishlist view', '/wishlist', migros, 200, ['Bedarfsanforderungen sozialer Institutionen', 'Reis']);
 await check('logged-in user skips login', '/login', migros, 307, [], [], '/');
 await check('bogus cookie is rejected', '/donor', 'fb_session=nope', 307, [], [], '/login');

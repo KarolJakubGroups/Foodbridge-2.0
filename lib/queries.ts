@@ -27,11 +27,26 @@ export function fetchMyClaims(foodbankId: string): Promise<ClaimWithDonation[]> 
   });
 }
 
-export function fetchTransportOrders(): Promise<TransportOrderWithDetails[]> {
+/** Which transport orders a viewer may see: dispatcher all, donor their own pickups, foodbank orders carrying their reservations. */
+export type OrderScope = { all: true } | { donorId: string } | { foodbankId: string };
+
+export function fetchTransportOrders(scope: OrderScope = { all: true }): Promise<TransportOrderWithDetails[]> {
+  const where = 'donorId' in scope
+    ? { donorId: scope.donorId }
+    : 'foodbankId' in scope
+      ? { donations: { some: { claim: { foodbankId: scope.foodbankId } } } }
+      : {};
   return prisma.transportOrder.findMany({
+    where,
     include: { donor: userSummary, donations: { orderBy: { overlapEnd: 'asc' } } },
     orderBy: { pickupTime: 'asc' },
   });
+}
+
+export function orderScopeFor(profile: { id: string; role: Role }): OrderScope {
+  if (profile.role === 'DONOR') return { donorId: profile.id };
+  if (profile.role === 'FOODBANK') return { foodbankId: profile.id };
+  return { all: true };
 }
 
 export function countPendingApplications(): Promise<number> {

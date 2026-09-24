@@ -11,7 +11,7 @@ const hasDb = Boolean(process.env.TEST_DATABASE_URL);
 
 import { prisma } from '@/lib/db';
 import * as services from '@/lib/services';
-import { fetchAvailableDonations, fetchGlobalImpact } from '@/lib/queries';
+import { fetchAvailableDonations, fetchGlobalImpact, fetchImpactFor, fetchTransportOrders, orderScopeFor } from '@/lib/queries';
 import { DomainError, zurichNoonOf } from '@/lib/domain';
 import type { Profile } from '@/lib/types';
 import type { Prisma } from '@/lib/generated/prisma/client';
@@ -238,6 +238,36 @@ describe.skipIf(!hasDb)('manual bundling from the preview dialog', () => {
     await expect(services.createTransportOrders(dispatcher, [{ donorId: migros.id, donationIds: [x.id, y.id] }])).rejects.toThrow(/anderen Spender/);
     await expect(services.createTransportOrders(foodbank, [{ donorId: migros.id, donationIds: [x.id] }])).rejects.toThrow(/Nur Disponenten/);
     expect((await prisma.donation.findUniqueOrThrow({ where: { id: x.id } })).status).toBe('CLAIMED');
+  });
+});
+
+describe.skipIf(!hasDb)('network view scoping', () => {
+  it('donors only see their own orders and impact; dispatcher sees all', async () => {
+    const m = await insertDonation(migros, { productName: 'M-only', overlapStart: inDays(70, 8), overlapEnd: inDays(70, 12), numberOfPallets: 1, weightPerPallet: 100 });
+    const c = await insertDonation(coop, { productName: 'C-only', overlapStart: inDays(70, 8), overlapEnd: inDays(70, 12), numberOfPallets: 1, weightPerPallet: 200 });
+    await services.claimDonation(foodbank, m.id);
+    await services.claimDonation(foodbank, c.id);
+    await services.createTransportOrders(dispatcher, [
+      { donorId: migros.id, donationIds: [m.id] },
+      { donorId: coop.id, donationIds: [c.id] },
+    ]);
+
+    const migrosOrders = await fetchTransportOrders(orderScopeFor(migros));
+    expect(migrosOrders.every((o) => o.donorId === migros.id)).toBe(true);
+    expect(migrosOrders.some((o) => o.donations.some((d) => d.id === m.id))).toBe(true);
+    expect(migrosOrders.some((o) => o.donations.some((d) => d.id === c.id))).toBe(false);
+
+    const foodbankOrders = await fetchTransportOrders(orderScopeFor(foodbank));
+    expect(foodbankOrders.some((o) => o.donations.some((d) => d.id === c.id))).toBe(true);
+
+    const all = await fetchTransportOrders(orderScopeFor(dispatcher));
+    expect(all.length).toBeGreaterThanOrEqual(migrosOrders.length + 1);
+
+    const migrosImpact = await fetchImpactFor(migros.id, 'DONOR');
+    const coopImpact = await fetchImpactFor(coop.id, 'DONOR');
+    const global = await fetchGlobalImpact();
+    expect(global.totalWeightKg).toBeGreaterThanOrEqual(migrosImpact.totalWeightKg + coopImpact.totalWeightKg);
+    expect(coopImpact.totalWeightKg).toBeGreaterThanOrEqual(200);
   });
 });
 
