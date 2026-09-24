@@ -44,6 +44,10 @@ export interface WishlistInput {
   note: string;
 }
 
+/** An own, still-open offer a donor could add pallets to instead of registering a duplicate. */
+export type OpenDonation = Pick<Donation, 'id' | 'productName' | 'category' | 'temperatureRange'
+  | 'numberOfPallets' | 'weightPerPallet' | 'bestBeforeDate' | 'overlapStart' | 'overlapEnd' | 'createdAt'>;
+
 /** One donation as shown in the bundling preview. */
 export type PlannedDonation = Pick<Donation, 'id' | 'productName' | 'category' | 'temperatureRange' | 'numberOfPallets' | 'weightPerPallet' | 'overlapStart' | 'overlapEnd'>;
 export interface PlannedOrder {

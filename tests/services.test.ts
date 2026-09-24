@@ -126,6 +126,41 @@ describe.skipIf(!hasDb)('donation capture (FA-01)', () => {
   });
 });
 
+describe.skipIf(!hasDb)('adding pallets to an existing offer', () => {
+  it('increases the pallet count and leaves the freshness window untouched', async () => {
+    const threeDaysAgo = new Date(Date.now() - 3 * 86_400_000);
+    const d = await insertDonation(migros, { productName: 'Milch UHT 1l', numberOfPallets: 2, weightPerPallet: 50, createdAt: threeDaysAgo });
+
+    const result = await services.addPalletsToDonation(migros, d.id, 3);
+    expect(result).toEqual({ productName: 'Milch UHT 1l', numberOfPallets: 5, totalWeightKg: 250 });
+
+    const after = await prisma.donation.findUniqueOrThrow({ where: { id: d.id } });
+    expect(after.numberOfPallets).toBe(5);
+    expect(after.weightPerPallet).toBe(50);
+    // registration date must not be reset, otherwise old goods would look fresh again
+    expect(after.createdAt.getTime()).toBe(threeDaysAgo.getTime());
+    expect(after.status).toBe('AVAILABLE');
+  });
+
+  it('refuses reserved offers, foreign offers, bad counts and the pallet cap', async () => {
+    const mine = await insertDonation(migros, { productName: 'Brot' });
+    const foreign = await insertDonation(coop, { productName: 'Brot' });
+    const claimed = await insertDonation(migros, { productName: 'Salat' });
+    await services.claimDonation(foodbank, claimed.id);
+
+    await expect(services.addPalletsToDonation(migros, foreign.id, 1)).rejects.toThrow(/nicht gefunden/);
+    await expect(services.addPalletsToDonation(migros, claimed.id, 1)).rejects.toThrow(/bereits reserviert/);
+    await expect(services.addPalletsToDonation(migros, mine.id, 0)).rejects.toThrow(/zusätzlicher Paletten/);
+    await expect(services.addPalletsToDonation(migros, mine.id, 1.5)).rejects.toThrow(/zusätzlicher Paletten/);
+    await expect(services.addPalletsToDonation(migros, mine.id, 66)).rejects.toThrow(/höchstens/);
+    await expect(services.addPalletsToDonation(foodbank, mine.id, 1)).rejects.toThrow(/Nur Spender/);
+
+    const unapproved = { ...migros, status: 'PENDING' as const };
+    await expect(services.addPalletsToDonation(unapproved, mine.id, 1)).rejects.toThrow(/noch nicht freigegeben/);
+    expect((await prisma.donation.findUniqueOrThrow({ where: { id: mine.id } })).numberOfPallets).toBe(1);
+  });
+});
+
 describe.skipIf(!hasDb)('freshness rule (FA-03)', () => {
   it('hides donations older than 4 days and refuses to claim them (TF-03)', async () => {
     const stale = await insertDonation(coop, { createdAt: new Date(Date.now() - 5 * 86_400_000) });

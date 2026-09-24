@@ -82,6 +82,13 @@ export async function createDonation(input: DonationInput): Promise<ActionResult
   return run(async () => { await services.createDonation(profile, input); });
 }
 
+/** Adds pallets to an existing open offer of the same donor. */
+export async function addPallets(donationId: number, additionalPallets: number):
+  Promise<ActionResult<{ productName: string; numberOfPallets: number; totalWeightKg: number }>> {
+  const profile = await requireProfile();
+  return run(() => services.addPalletsToDonation(profile, donationId, additionalPallets));
+}
+
 // ---------------------------------------------------------------- claims
 export async function claimDonation(donationId: number): Promise<ActionResult> {
   const profile = await requireProfile();

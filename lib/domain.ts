@@ -37,6 +37,11 @@ export class DomainError extends Error {
   }
 }
 
+/** Key used to recognise that a donor is registering the same product twice. */
+export function normalizeProductName(name: string): string {
+  return (name ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
 export function weightKg(d: { numberOfPallets: number; weightPerPallet: number }): number {
   return d.numberOfPallets * d.weightPerPallet;
 }

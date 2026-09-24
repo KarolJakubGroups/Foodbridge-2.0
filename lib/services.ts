@@ -106,6 +106,37 @@ export async function createDonation(donor: Profile, input: DonationInput) {
   });
 }
 
+/**
+ * Adds pallets to an own, still-available offer instead of creating a duplicate.
+ * The added pallets take the existing weight per pallet and pickup window; the
+ * registration date stays unchanged, so the 4-day freshness window is never extended.
+ */
+export async function addPalletsToDonation(donor: Profile, donationId: number, additionalPallets: number) {
+  if (donor.role !== 'DONOR') throw new DomainError('Nur Spender können Angebote ergänzen.');
+  if (donor.status !== 'APPROVED') throw new DomainError('Ihr Spenderkonto ist noch nicht freigegeben.');
+  if (!Number.isInteger(additionalPallets) || additionalPallets < 1) {
+    throw new DomainError('Bitte die Anzahl zusätzlicher Paletten angeben.');
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const existing = await tx.donation.findUnique({ where: { id: donationId } });
+    if (!existing || existing.donorId !== donor.id) throw new DomainError('Angebot nicht gefunden.');
+    if (existing.status !== 'AVAILABLE') {
+      throw new DomainError('Das Angebot ist bereits reserviert und kann nicht mehr ergänzt werden.');
+    }
+    const total = existing.numberOfPallets + additionalPallets;
+    if (total > MAX_PALLETS) throw new DomainError(`Ein Angebot umfasst höchstens ${MAX_PALLETS} Paletten.`);
+
+    // Optimistic lock: only update if the pallet count is still the one we read.
+    const { count } = await tx.donation.updateMany({
+      where: { id: donationId, donorId: donor.id, status: 'AVAILABLE', numberOfPallets: existing.numberOfPallets },
+      data: { numberOfPallets: total },
+    });
+    if (count === 0) throw new DomainError('Das Angebot wurde zwischenzeitlich verändert. Bitte erneut versuchen.');
+    return { productName: existing.productName, numberOfPallets: total, totalWeightKg: total * existing.weightPerPallet };
+  });
+}
+
 // ---------------------------------------------------------------- claims
 /**
  * Atomic claim: the conditional updateMany guarantees a single winner and
