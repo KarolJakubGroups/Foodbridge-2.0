@@ -3,8 +3,8 @@ import bcrypt from 'bcryptjs';
 import { prisma } from '@/lib/db';
 import { planTransportOrders } from '@/lib/logistics';
 import {
-  CATEGORIES, DomainError, MAX_PALLETS, MAX_WEIGHT_PER_PALLET, MIN_PASSWORD_LENGTH, TEMPERATURE_RANGES,
-  freshnessCutoff, zurichNoonOf, type TransportStatus,
+  CATEGORIES, DomainError, MAX_PALLETS, MAX_WEIGHT_PER_PALLET, MIN_PASSWORD_LENGTH,
+  freshnessCutoff, normalizeTemperature, zurichNoonOf, type TransportStatus,
 } from '@/lib/domain';
 import type { Application, BundleRequest, DonationInput, PlannedGroup, Profile, RegistrationInput, WishlistInput } from '@/lib/types';
 
@@ -73,10 +73,11 @@ export async function createDonation(donor: Profile, input: DonationInput) {
   if (donor.role !== 'DONOR') throw new DomainError('Nur Spender können Angebote erfassen.');
   if (donor.status !== 'APPROVED') throw new DomainError('Ihr Spenderkonto ist noch nicht freigegeben.');
 
+  const temperatureRange = normalizeTemperature(input.temperatureRange);
   const missing: string[] = [];
   if (!input.productName?.trim()) missing.push('Produkt');
   if (!CATEGORIES.includes(input.category)) missing.push('Warengruppe');
-  if (!TEMPERATURE_RANGES.includes(input.temperatureRange)) missing.push('Temperatur');
+  if (!temperatureRange) missing.push('Temperatur');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.bestBeforeDate ?? '')) missing.push('MHD');
   if (!input.pickupAddress?.trim()) missing.push('Abholadresse');
   if (!Number.isInteger(input.numberOfPallets) || input.numberOfPallets < 1 || input.numberOfPallets > MAX_PALLETS) missing.push('Anzahl Paletten');
@@ -95,7 +96,7 @@ export async function createDonation(donor: Profile, input: DonationInput) {
       donorId: donor.id,
       productName: input.productName.trim().slice(0, 120),
       category: input.category,
-      temperatureRange: input.temperatureRange,
+      temperatureRange: temperatureRange!,
       bestBeforeDate: input.bestBeforeDate,
       pickupAddress: input.pickupAddress.trim().slice(0, 200),
       numberOfPallets: input.numberOfPallets,

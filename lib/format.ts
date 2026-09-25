@@ -32,20 +32,19 @@ export function fmtKg(n: number | string | null | undefined): string {
   return `${fmtNumber(n)} kg`;
 }
 
-export const TEMPERATURES: { value: TemperatureRange; label: string }[] = [
-  { value: 'AMBIENT', label: 'Ambient (+18°)' },
-  { value: 'CHILLED', label: 'Gekühlt (+2° bis +5°)' },
-  { value: 'FROZEN', label: 'Tiefkühl (−18°)' },
-];
+export const TEMP_LABEL: Record<TemperatureRange, string> = {
+  AMBIENT: 'Raumtemperatur (+15 bis +25 °C)',
+  COOL: 'Kühl (+8 bis +12 °C)',
+  CHILLED: 'Gekühlt (+2 bis +5 °C)',
+  SUPERCHILLED: 'Stark gekühlt (0 bis +2 °C)',
+  FROZEN: 'Tiefgekühlt (−18 °C)',
+};
+export const TEMPERATURES = (Object.entries(TEMP_LABEL) as [TemperatureRange, string][]).map(([value, label]) => ({ value, label }));
+
+/** Full label of a preset, or the donor's own description as entered. */
 export function tempLabel(value: string): string {
   return TEMP_LABEL[value as TemperatureRange] ?? value;
 }
-
-export const TEMP_LABEL: Record<TemperatureRange, string> = {
-  AMBIENT: 'Ambient (+18°)',
-  CHILLED: 'Gekühlt (+2° bis +5°)',
-  FROZEN: 'Tiefkühl (−18°)',
-};
 
 export const CATEGORY_LABEL: Record<Category, string> = {
   MEAT_FISH: 'Fleisch & Fisch',

@@ -2,7 +2,9 @@
 export const ROLES = ['DONOR', 'FOODBANK', 'DISPATCHER'] as const;
 /** Verification state of an account. Self-registered donors start PENDING. */
 export const USER_STATUSES = ['PENDING', 'APPROVED', 'REJECTED'] as const;
-export const TEMPERATURE_RANGES = ['FROZEN', 'CHILLED', 'AMBIENT'] as const;
+/** Preset storage temperatures. Donors may also describe their own, which is stored as entered. */
+export const TEMPERATURE_RANGES = ['AMBIENT', 'COOL', 'CHILLED', 'SUPERCHILLED', 'FROZEN'] as const;
+export const MAX_TEMPERATURE_LENGTH = 60;
 /** Product categories (Warengruppen) a donation is classified into. */
 export const CATEGORIES = ['MEAT_FISH', 'DAIRY_EGGS', 'FRUIT_VEG', 'BAKERY', 'DRY_GOODS', 'BEVERAGES', 'READY_MEALS', 'OTHER'] as const;
 export const DONATION_STATUSES = ['AVAILABLE', 'CLAIMED', 'BUNDLED', 'COMPLETED', 'WITHDRAWN'] as const;
@@ -55,6 +57,12 @@ export function donationState(d: { status: string; createdAt: Date }, now = new 
     case 'WITHDRAWN': return 'WITHDRAWN';
     default: return 'OPEN';
   }
+}
+
+/** A preset code or the donor's own temperature description, trimmed; null when empty or too long. */
+export function normalizeTemperature(value: string | null | undefined): string | null {
+  const t = (value ?? '').trim().replace(/\s+/g, ' ');
+  return t && t.length <= MAX_TEMPERATURE_LENGTH ? t : null;
 }
 
 /** Key used to recognise that a donor is registering the same product twice. */

@@ -34,7 +34,8 @@ export type WishlistWithFoodbank = Wishlist & { foodbank: UserSummary };
 export interface DonationInput {
   productName: string;
   category: Category;
-  temperatureRange: TemperatureRange;
+  /** A TemperatureRange preset or the donor's own description. */
+  temperatureRange: TemperatureRange | (string & {});
   bestBeforeDate: string; // YYYY-MM-DD
   pickupAddress: string;
   numberOfPallets: number;

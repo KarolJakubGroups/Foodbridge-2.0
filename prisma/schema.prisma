@@ -48,7 +48,7 @@ model Donation {
   donor            User     @relation("DonorDonations", fields: [donorId], references: [id])
   productName      String
   category         String   @default("OTHER") // see CATEGORIES in lib/domain.ts
-  temperatureRange String   // FROZEN | CHILLED | AMBIENT
+  temperatureRange String   // preset (AMBIENT | COOL | CHILLED | SUPERCHILLED | FROZEN) or the donor's own text
   bestBeforeDate   String   // YYYY-MM-DD (date only, no timezone)
   pickupAddress    String
   numberOfPallets  Int

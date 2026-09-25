@@ -121,6 +121,12 @@ describe.skipIf(!hasDb)('donation capture (FA-01)', () => {
     await expect(services.createDonation(migros, { ...valid, category: 'CANDY' as never })).rejects.toThrow(/Warengruppe/);
   });
 
+  it('stores a temperature the donor typed in, and still requires one', async () => {
+    const d = await services.createDonation(migros, { ...valid, temperatureRange: '  +12 bis  +15 °C ' });
+    expect(d.temperatureRange).toBe('+12 bis +15 °C');
+    await expect(services.createDonation(migros, { ...valid, temperatureRange: '   ' })).rejects.toThrow(/Temperatur/);
+  });
+
   it('rejects non-donors', async () => {
     await expect(services.createDonation(foodbank, valid)).rejects.toBeInstanceOf(DomainError);
   });
