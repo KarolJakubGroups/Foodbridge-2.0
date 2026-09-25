@@ -3,14 +3,18 @@
 import { useActionState } from 'react';
 import Link from 'next/link';
 import { register } from '@/lib/actions';
+import { callAction } from '@/lib/call-action';
 import type { ActionResult } from '@/lib/types';
 import { MIN_PASSWORD_LENGTH } from '@/lib/domain';
 import { Alert, Field, btn, inputCls, linkCls } from '@/components/ui';
 
 const optional = <span className="font-normal text-muted">(freiwillig)</span>;
 
+/** Offline or a dropped connection shows a message instead of an error page; the redirect after success passes through. */
+const submitRegister = (prev: ActionResult | null, formData: FormData) => callAction(() => register(prev, formData));
+
 export function RegisterForm() {
-  const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(register, null);
+  const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(submitRegister, null);
   return (
     <>
       <form action={formAction} className="flex flex-col gap-5">

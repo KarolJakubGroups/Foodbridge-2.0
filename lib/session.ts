@@ -24,8 +24,12 @@ export async function createSession(userId: string): Promise<void> {
 export async function destroySession(): Promise<void> {
   const store = await cookies();
   const token = store.get(SESSION_COOKIE)?.value;
-  if (token) await prisma.session.deleteMany({ where: { id: hash(token) } });
-  store.delete(SESSION_COOKIE);
+  try {
+    if (token) await prisma.session.deleteMany({ where: { id: hash(token) } });
+  } finally {
+    // Sign out on this device even when the database cannot be reached.
+    store.delete(SESSION_COOKIE);
+  }
 }
 
 /** Resolves the signed-in user for this request; memoised per render. */

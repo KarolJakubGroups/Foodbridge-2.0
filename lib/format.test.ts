@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { normalizeTemperature } from './domain';
-import { fmtBestBefore, fmtCount, fmtDay, initials, isCold, tempLabel, tempShort } from './format';
+import { fmtBestBefore, fmtCount, fmtDay, fmtTimeLeft, fmtWindow, initials, isCold, tempKind, tempLabel, tempShort } from './format';
 
 describe('storage temperature', () => {
   it('keeps presets and trims own descriptions', () => {
@@ -45,5 +45,40 @@ describe('plain-language formatting', () => {
   it('builds avatar initials from an organisation name', () => {
     expect(initials('Frischmarkt Oerlikon')).toBe('FO');
     expect(initials('Coop')).toBe('CO');
+  });
+});
+
+describe('fmtWindow', () => {
+  const now = new Date('2026-09-25T08:00:00.000Z');
+  it('shows one day once and both times', () => {
+    expect(fmtWindow('2026-09-26T05:00:00.000Z', '2026-09-26T10:00:00.000Z', now)).toBe('Morgen, 07:00–12:00');
+  });
+  it('names both days when the window spans midnight', () => {
+    expect(fmtWindow('2026-09-26T05:00:00.000Z', '2026-09-27T07:00:00.000Z', now)).toBe('Morgen, 07:00 – So 27.09., 09:00');
+  });
+});
+
+describe('fmtTimeLeft', () => {
+  const MIN = 60_000; const H = 60 * MIN; const D = 24 * H;
+  it('uses the two largest units', () => {
+    expect(fmtTimeLeft(3 * D + 4 * H + 5 * MIN)).toBe('3 Tage 4 Std');
+    expect(fmtTimeLeft(D)).toBe('1 Tag');
+    expect(fmtTimeLeft(5 * H + 20 * MIN)).toBe('5 Std 20 Min');
+    expect(fmtTimeLeft(2 * H)).toBe('2 Std');
+    expect(fmtTimeLeft(12 * MIN + 30_000)).toBe('12 Min');
+    expect(fmtTimeLeft(30_000)).toBe('weniger als 1 Min');
+  });
+  it('is null once the deadline has passed', () => {
+    expect(fmtTimeLeft(0)).toBeNull();
+    expect(fmtTimeLeft(-1)).toBeNull();
+  });
+});
+
+describe('tempKind', () => {
+  it('maps presets to the three icon families and keeps own text separate', () => {
+    expect(tempKind('FROZEN')).toBe('frozen');
+    expect(['CHILLED', 'SUPERCHILLED', 'COOL'].map(tempKind)).toEqual(['chilled', 'chilled', 'chilled']);
+    expect(tempKind('AMBIENT')).toBe('ambient');
+    expect(tempKind('+8 bis +12 °C')).toBe('custom');
   });
 });

@@ -2,10 +2,10 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { ChartIcon, HomeIcon, LayersIcon, ListIcon, SearchIcon, TruckIcon, UserCheckIcon } from '@/components/icons';
+import { ChartIcon, HomeIcon, LayersIcon, ListIcon, MapIcon, SearchIcon, TruckIcon, UserCheckIcon } from '@/components/icons';
 
 const ICONS = {
-  home: HomeIcon, truck: TruckIcon, search: SearchIcon, list: ListIcon, userCheck: UserCheckIcon, layers: LayersIcon, chart: ChartIcon,
+  home: HomeIcon, truck: TruckIcon, search: SearchIcon, list: ListIcon, userCheck: UserCheckIcon, layers: LayersIcon, chart: ChartIcon, map: MapIcon,
 };
 
 export interface NavItem {
@@ -25,15 +25,20 @@ function Count({ n }: { n?: number }) {
   );
 }
 
-const isActive = (pathname: string, href: string) => pathname === href || pathname.startsWith(`${href}/`);
+/** The most specific item wins, so /dispatcher/map highlights "Karte", not "Transporte planen". */
+function activeHref(pathname: string, items: NavItem[]): string | undefined {
+  return items
+    .filter((it) => pathname === it.href || pathname.startsWith(`${it.href}/`))
+    .sort((a, b) => b.href.length - a.href.length)[0]?.href;
+}
 
 /** Desktop navigation in the header. */
 export function Nav({ items }: { items: NavItem[] }) {
-  const pathname = usePathname();
+  const current = activeHref(usePathname(), items);
   return (
     <nav className="hidden lg:flex flex-1 min-w-0 items-center gap-1">
       {items.map((it) => {
-        const active = isActive(pathname, it.href);
+        const active = it.href === current;
         return (
           <Link key={it.href} href={it.href} aria-current={active ? 'page' : undefined}
             className={`flex items-center gap-2 px-3 xl:px-4 py-2.5 rounded-xl text-[15px] xl:text-base whitespace-nowrap ${active
@@ -48,13 +53,13 @@ export function Nav({ items }: { items: NavItem[] }) {
 
 /** Thumb-reachable bottom tab bar on phones. */
 export function MobileNav({ items }: { items: NavItem[] }) {
-  const pathname = usePathname();
+  const current = activeHref(usePathname(), items);
   return (
     <nav className="lg:hidden fixed bottom-0 inset-x-0 z-20 bg-white border-t border-line no-print"
       style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
       <div className="grid" style={{ gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))` }}>
         {items.map((it) => {
-          const active = isActive(pathname, it.href);
+          const active = it.href === current;
           const Icon = ICONS[it.icon];
           return (
             <Link key={it.href} href={it.href} aria-current={active ? 'page' : undefined}

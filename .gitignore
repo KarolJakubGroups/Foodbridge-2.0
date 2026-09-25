@@ -51,3 +51,6 @@ legacy/frontend/node_modules/
 /lib/generated/prisma
 
 lib/generated/
+
+# The template (no secrets) belongs in the repository.
+!.env.example

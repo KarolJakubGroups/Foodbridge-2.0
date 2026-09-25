@@ -2,14 +2,18 @@
 
 import { useMemo, useState, useTransition } from 'react';
 import { claimDonation } from '@/lib/actions';
+import { callAction } from '@/lib/call-action';
 import type { DonationWithDonor } from '@/lib/types';
-import { categoryLabel, fmtBestBefore, fmtDateOfInstant, fmtDayTime, fmtKg, fmtPallets, fmtTime, tempShort } from '@/lib/format';
-import { weightKg } from '@/lib/domain';
-import { Alert, EmptyState, Pill, TempPill, btn, chipCls, inputCls } from '@/components/ui';
-import { CalendarIcon, ClockIcon, MapPinIcon, SearchIcon } from '@/components/icons';
+import { categoryLabel, fmtBestBefore, fmtKg, fmtPallets, fmtWindow, tempShort } from '@/lib/format';
+import { claimDeadline, claimDeadlineReason, remainingPallets } from '@/lib/domain';
+import { Alert, EmptyState, PalletBar, Pill, TempPill, btn, chipCls, inputCls } from '@/components/ui';
+import { CalendarIcon, ClockIcon, MapPinIcon, MinusIcon, PlusIcon, SearchIcon } from '@/components/icons';
+import { ClaimCountdown } from '@/components/ClaimCountdown';
+import { useNow } from '@/components/useNow';
 
-type Sort = 'bestBefore' | 'newest' | 'weight';
+type Sort = 'deadline' | 'bestBefore' | 'newest' | 'weight';
 const SORTS: { value: Sort; label: string }[] = [
+  { value: 'deadline', label: 'Reservierung endet bald' },
   { value: 'bestBefore', label: 'Kürzeste Haltbarkeit zuerst' },
   { value: 'newest', label: 'Neueste zuerst' },
   { value: 'weight', label: 'Grösste Menge zuerst' },
@@ -21,13 +25,39 @@ function town(address: string): string {
   return last.replace(/^\d{4}\s*/, '') || address;
 }
 
+/** Available weight of what is still free. */
+const freeKg = (d: DonationWithDonor) => remainingPallets(d) * d.weightPerPallet;
+
+const stepBtn = 'inline-flex size-12 shrink-0 items-center justify-center rounded-xl border border-control bg-white text-ink hover:bg-sand disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-700/25';
+const stepInput = 'h-12 w-16 shrink-0 rounded-xl border border-control bg-white text-center text-lg font-bold tabular-nums text-ink focus:outline-none focus:border-brand-700 focus:ring-4 focus:ring-brand-700/15';
+
+function PalletStepper({ value, max, onChange, disabled }: { value: number; max: number; onChange: (n: number) => void; disabled: boolean }) {
+  const set = (n: number) => onChange(Math.min(max, Math.max(1, n)));
+  return (
+    <div className="flex items-center gap-2" role="group" aria-label="Anzahl Paletten">
+      <button type="button" className={stepBtn} disabled={disabled || value <= 1} onClick={() => set(value - 1)} aria-label="Eine Palette weniger">
+        <MinusIcon className="size-5" />
+      </button>
+      <input type="number" inputMode="numeric" min={1} max={max} value={value} disabled={disabled}
+        onChange={(e) => set(Number(e.target.value) || 1)}
+        className={stepInput} aria-label="Paletten" />
+      <button type="button" className={stepBtn} disabled={disabled || value >= max} onClick={() => set(value + 1)} aria-label="Eine Palette mehr">
+        <PlusIcon className="size-5" />
+      </button>
+      <span className="text-[15px] text-muted whitespace-nowrap">von {max}</span>
+    </div>
+  );
+}
+
 export function AvailableDonations({ donations, now: nowIso }: { donations: DonationWithDonor[]; now: string }) {
-  const now = useMemo(() => new Date(nowIso), [nowIso]);
+  const nowMs = useNow(Date.parse(nowIso));
+  const now = useMemo(() => new Date(nowMs), [nowMs]);
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState('');
   const [storage, setStorage] = useState('');
-  const [sort, setSort] = useState<Sort>('bestBefore');
+  const [sort, setSort] = useState<Sort>('deadline');
   const [confirmId, setConfirmId] = useState<number | null>(null);
+  const [pallets, setPallets] = useState(1);
   const [message, setMessage] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -45,21 +75,32 @@ export function AvailableDonations({ donations, now: nowIso }: { donations: Dona
       && (!q || d.productName.toLowerCase().includes(q) || d.donor.organizationName.toLowerCase().includes(q)
         || categoryLabel(d.category).toLowerCase().includes(q)));
     const by: Record<Sort, (a: DonationWithDonor, b: DonationWithDonor) => number> = {
+      deadline: (a, b) => claimDeadline(a).getTime() - claimDeadline(b).getTime(),
       bestBefore: (a, b) => a.bestBeforeDate.localeCompare(b.bestBeforeDate),
       newest: (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-      weight: (a, b) => weightKg(b) - weightKg(a),
+      weight: (a, b) => freeKg(b) - freeKg(a),
     };
     return [...list].sort(by[sort]);
   }, [donations, query, category, storage, sort]);
 
-  const claim = (d: DonationWithDonor) => {
+  const startConfirm = (d: DonationWithDonor) => {
+    setMessage(null);
+    setPallets(remainingPallets(d)); // most institutions take everything; they can lower it
+    setConfirmId(d.id);
+  };
+
+  const claim = (d: DonationWithDonor, count: number) => {
     setMessage(null);
     startTransition(async () => {
-      const result = await claimDonation(d.id);
+      const result = await callAction(() => claimDonation(d.id, count));
       setConfirmId(null);
-      setMessage(result.ok
-        ? { kind: 'ok', text: `«${d.productName}» ist für Sie reserviert. Sie finden es unter «Meine Reservierungen».` }
-        : { kind: 'error', text: result.error });
+      if (!result.ok) return setMessage({ kind: 'error', text: result.error });
+      const left = result.data!.remainingPallets;
+      setMessage({
+        kind: 'ok',
+        text: `${fmtPallets(count)} «${d.productName}» für Sie reserviert. `
+          + (left > 0 ? `${fmtPallets(left)} ${left === 1 ? 'bleibt' : 'bleiben'} für andere Abgabestellen verfügbar.` : 'Das Angebot ist damit vollständig reserviert.'),
+      });
     });
   };
 
@@ -116,45 +157,60 @@ export function AvailableDonations({ donations, now: nowIso }: { donations: Dona
         <ul className="grid grid-cols-1 @xl:grid-cols-2 @4xl:grid-cols-3 gap-4 md:gap-5">
           {rows.map((d) => {
             const bestBefore = fmtBestBefore(d.bestBeforeDate, now);
-            const sameDay = fmtDateOfInstant(d.overlapStart) === fmtDateOfInstant(d.overlapEnd);
             const confirming = confirmId === d.id;
+            const left = remainingPallets(d);
+            const deadline = claimDeadline(d);
+            const closed = deadline.getTime() <= nowMs;
             return (
-              <li key={d.id} className="bg-white border border-line rounded-2xl p-5 md:p-6 flex flex-col gap-3">
+              <li key={d.id} className={`bg-white border border-line rounded-2xl p-5 md:p-6 flex flex-col gap-3 ${closed ? 'opacity-70' : ''}`}>
                 <div className="flex flex-wrap gap-2">
-                  <Pill>{categoryLabel(d.category)}</Pill>
                   <TempPill value={d.temperatureRange} />
+                  <Pill>{categoryLabel(d.category)}</Pill>
                 </div>
                 <h3 className="text-xl font-bold text-ink">{d.productName}</h3>
                 <span className="flex items-center gap-1.5 text-[15px] text-muted">
                   <MapPinIcon className="size-4 shrink-0" />{d.donor.organizationName} · {town(d.pickupAddress)}
                 </span>
-                <div className="flex items-baseline gap-2.5">
-                  <span className="font-display text-3xl font-bold text-ink tabular-nums">{fmtKg(weightKg(d))}</span>
-                  <span className="text-[15px] text-muted">{fmtPallets(d.numberOfPallets)}</span>
+                <div className="flex flex-col gap-1.5">
+                  <div className="flex items-baseline gap-2.5">
+                    <span className="font-display text-3xl font-bold text-ink tabular-nums">{fmtKg(freeKg(d))}</span>
+                    <span className="text-[15px] text-muted">
+                      {d.claimedPallets > 0 ? `${left} von ${fmtPallets(d.numberOfPallets)} frei` : fmtPallets(d.numberOfPallets)}
+                    </span>
+                  </div>
+                  {d.claimedPallets > 0 && <PalletBar claimed={d.claimedPallets} total={d.numberOfPallets} />}
                 </div>
                 <div className="flex flex-col gap-1.5 text-[15px] text-ink-2">
                   <span className="flex items-center gap-2">
-                    <CalendarIcon className="size-4 shrink-0 text-subtle" />
-                    Abholung {fmtDayTime(d.overlapStart, now)}–{sameDay ? fmtTime(d.overlapEnd) : fmtDayTime(d.overlapEnd, now)}
+                    <CalendarIcon className="size-4 shrink-0 text-subtle" />Abholung {fmtWindow(d.overlapStart, d.overlapEnd, now)}
                   </span>
                   <span className={`flex items-center gap-2 ${bestBefore.urgent ? 'font-semibold text-[#9a4a0a]' : ''}`}>
                     <ClockIcon className="size-4 shrink-0 text-subtle" />{bestBefore.text}
                   </span>
                 </div>
-                <div className="mt-auto pt-2">
-                  {confirming ? (
-                    <div className="flex flex-col gap-2">
-                      <p className="text-[15px] text-ink-2">{fmtKg(weightKg(d))} verbindlich reservieren?</p>
+                <ClaimCountdown deadline={deadline} reason={claimDeadlineReason(d)} now={nowMs} />
+                <div className="mt-auto pt-1">
+                  {confirming && !closed ? (
+                    <div className="flex flex-col gap-3">
+                      {left > 1 && (
+                        <div className="flex flex-col gap-2">
+                          <span className="text-[15px] font-semibold text-ink">Wie viele Paletten brauchen Sie?</span>
+                          <PalletStepper value={Math.min(pallets, left)} max={left} onChange={setPallets} disabled={pending} />
+                        </div>
+                      )}
+                      <p className="text-[15px] text-ink-2">
+                        {fmtPallets(Math.min(pallets, left))} ({fmtKg(Math.min(pallets, left) * d.weightPerPallet)}) verbindlich reservieren?
+                      </p>
                       <div className="flex gap-2">
-                        <button type="button" className={`${btn('primary')} flex-1`} disabled={pending} onClick={() => claim(d)}>
+                        <button type="button" className={`${btn('primary')} flex-1`} disabled={pending} onClick={() => claim(d, Math.min(pallets, left))}>
                           {pending ? 'Wird reserviert…' : 'Ja, reservieren'}
                         </button>
                         <button type="button" className={btn('ghost')} disabled={pending} onClick={() => setConfirmId(null)}>Abbrechen</button>
                       </div>
                     </div>
                   ) : (
-                    <button type="button" className={`${btn('primary')} w-full`} disabled={pending} onClick={() => { setMessage(null); setConfirmId(d.id); }}>
-                      Reservieren
+                    <button type="button" className={`${btn('primary')} w-full`} disabled={pending || closed} onClick={() => startConfirm(d)}>
+                      {closed ? 'Nicht mehr reservierbar' : 'Reservieren'}
                     </button>
                   )}
                 </div>

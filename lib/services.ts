@@ -1,12 +1,16 @@
 import 'server-only';
 import bcrypt from 'bcryptjs';
 import { prisma } from '@/lib/db';
-import { planTransportOrders } from '@/lib/logistics';
+import { Prisma } from '@/lib/generated/prisma/client';
+import { bundleWindow, planTransportOrders } from '@/lib/logistics';
+import { buildGallikerPayload, gallikerConfig, transmitToGalliker, type GallikerConfig, type GallikerResult } from '@/lib/galliker';
 import {
   CATEGORIES, DomainError, MAX_PALLETS, MAX_WEIGHT_PER_PALLET, MIN_PASSWORD_LENGTH,
-  freshnessCutoff, normalizeTemperature, zurichNoonOf, type TransportStatus,
+  freshnessCutoff, isClaimable, normalizeAddress, normalizeTemperature, remainingPallets, type TransportStatus,
 } from '@/lib/domain';
-import type { Application, BundleRequest, DonationInput, PlannedGroup, Profile, RegistrationInput, WishlistInput } from '@/lib/types';
+import type {
+  Application, BundleRequest, BundlingResult, DonationInput, PlannedGroup, Profile, RegistrationInput, WishlistInput,
+} from '@/lib/types';
 
 // ---------------------------------------------------------- registration
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -87,6 +91,7 @@ export async function createDonation(donor: Profile, input: DonationInput) {
   if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) missing.push('Abholzeitfenster');
   if (missing.length) throw new DomainError(`Pflichtfelder fehlen oder sind ungültig: ${missing.join(', ')}.`);
   if (end <= start) throw new DomainError('Das Abholzeitfenster-Ende muss nach dem Beginn liegen.');
+  if (end <= new Date()) throw new DomainError('Das Abholzeitfenster liegt in der Vergangenheit. Bitte ein kommendes Zeitfenster wählen.');
   if (input.bestBeforeDate < new Date().toISOString().slice(0, 10)) {
     throw new DomainError('Das Mindesthaltbarkeitsdatum darf nicht in der Vergangenheit liegen.');
   }
@@ -108,7 +113,7 @@ export async function createDonation(donor: Profile, input: DonationInput) {
 }
 
 /**
- * Adds pallets to an own, still-available offer instead of creating a duplicate.
+ * Adds pallets to an own offer that is still open, instead of creating a duplicate.
  * The added pallets take the existing weight per pallet and pickup window; the
  * registration date stays unchanged, so the 4-day freshness window is never extended.
  */
@@ -119,143 +124,238 @@ export async function addPalletsToDonation(donor: Profile, donationId: number, a
     throw new DomainError('Bitte die Anzahl zusätzlicher Paletten angeben.');
   }
 
-  return prisma.$transaction(async (tx) => {
-    const existing = await tx.donation.findUnique({ where: { id: donationId } });
-    if (!existing || existing.donorId !== donor.id) throw new DomainError('Angebot nicht gefunden.');
-    if (existing.status !== 'AVAILABLE') {
-      throw new DomainError('Das Angebot ist bereits reserviert und kann nicht mehr ergänzt werden.');
-    }
-    const total = existing.numberOfPallets + additionalPallets;
-    if (total > MAX_PALLETS) throw new DomainError(`Ein Angebot umfasst höchstens ${MAX_PALLETS} Paletten.`);
+  const existing = await prisma.donation.findUnique({ where: { id: donationId } });
+  if (!existing || existing.donorId !== donor.id) throw new DomainError('Angebot nicht gefunden.');
+  if (existing.status !== 'AVAILABLE' || !isClaimable(existing)) {
+    throw new DomainError('Das Angebot ist nicht mehr offen und kann nicht ergänzt werden.');
+  }
+  const total = existing.numberOfPallets + additionalPallets;
+  if (total > MAX_PALLETS) throw new DomainError(`Ein Angebot umfasst höchstens ${MAX_PALLETS} Paletten.`);
 
-    // Optimistic lock: only update if the pallet count is still the one we read.
-    const { count } = await tx.donation.updateMany({
-      where: { id: donationId, donorId: donor.id, status: 'AVAILABLE', numberOfPallets: existing.numberOfPallets },
-      data: { numberOfPallets: total },
-    });
-    if (count === 0) throw new DomainError('Das Angebot wurde zwischenzeitlich verändert. Bitte erneut versuchen.');
-    return { productName: existing.productName, numberOfPallets: total, totalWeightKg: total * existing.weightPerPallet };
+  // Optimistic lock: only update if the pallet count is still the one we read.
+  const { count } = await prisma.donation.updateMany({
+    where: { id: donationId, donorId: donor.id, status: 'AVAILABLE', numberOfPallets: existing.numberOfPallets },
+    data: { numberOfPallets: total },
   });
+  if (count === 0) throw new DomainError('Das Angebot wurde zwischenzeitlich verändert. Bitte erneut versuchen.');
+  return { productName: existing.productName, numberOfPallets: total, totalWeightKg: total * existing.weightPerPallet };
 }
 
-/** A donor pulls back an offer nobody has reserved yet (goods sold, spoiled or expired). */
+/**
+ * A donor pulls back the pallets nobody has reserved (goods sold, spoiled or not
+ * picked up in time). Reserved pallets stay promised to their institutions:
+ * without reservations the offer is withdrawn, otherwise it shrinks to what is reserved.
+ */
 export async function withdrawDonation(donor: Profile, donationId: number) {
   if (donor.role !== 'DONOR') throw new DomainError('Nur Spender können Angebote zurückziehen.');
-  const existing = await prisma.donation.findUnique({ where: { id: donationId }, select: { donorId: true, status: true, productName: true } });
+  const existing = await prisma.donation.findUnique({ where: { id: donationId } });
   if (!existing || existing.donorId !== donor.id) throw new DomainError('Angebot nicht gefunden.');
-  if (existing.status !== 'AVAILABLE') {
-    throw new DomainError('Das Angebot ist bereits reserviert und kann nicht mehr zurückgezogen werden.');
+  const unreserved = remainingPallets(existing);
+  if (existing.status !== 'AVAILABLE' || unreserved === 0) {
+    throw new DomainError('Alle Paletten sind bereits reserviert. Das Angebot kann nicht mehr zurückgezogen werden.');
   }
+  const keepsReservations = existing.claimedPallets > 0;
   const { count } = await prisma.donation.updateMany({
-    where: { id: donationId, donorId: donor.id, status: 'AVAILABLE' },
-    data: { status: 'WITHDRAWN' },
+    where: { id: donationId, donorId: donor.id, status: 'AVAILABLE', claimedPallets: existing.claimedPallets, numberOfPallets: existing.numberOfPallets },
+    data: keepsReservations ? { numberOfPallets: existing.claimedPallets, status: 'CLAIMED' } : { status: 'WITHDRAWN' },
   });
-  if (count === 0) throw new DomainError('Das Angebot wurde zwischenzeitlich reserviert.');
-  return { productName: existing.productName };
+  if (count === 0) throw new DomainError('Gerade wurde etwas reserviert. Bitte die Seite neu laden und erneut versuchen.');
+  return { productName: existing.productName, withdrawnPallets: unreserved, keptPallets: existing.claimedPallets };
 }
 
 // ---------------------------------------------------------------- claims
+const CLAIM_ATTEMPTS = 3;
+
 /**
- * Atomic claim: the conditional updateMany guarantees a single winner and
- * enforces the 4-day freshness rule on the write path.
+ * An institution reserves some or all remaining pallets of an offer.
+ *
+ * Checked on the write path: the 4-day freshness rule, that the pickup window has
+ * not closed, and that enough pallets are left. The pallet count is taken with an
+ * optimistic lock (the update only applies if nobody reserved in between) and the
+ * database refuses to ever reserve more than was offered. A lost race is retried.
  */
-export async function claimDonation(foodbank: Profile, donationId: number) {
+export async function claimDonation(foodbank: Profile, donationId: number, pallets: number) {
   if (foodbank.role !== 'FOODBANK') throw new DomainError('Nur Abgabestellen können Spenden reservieren.');
-  return prisma.$transaction(async (tx) => {
-    const { count } = await tx.donation.updateMany({
-      where: { id: donationId, status: 'AVAILABLE', createdAt: { gt: freshnessCutoff() } },
-      data: { status: 'CLAIMED' },
-    });
-    if (count === 0) {
-      const d = await tx.donation.findUnique({ where: { id: donationId }, select: { status: true } });
-      if (!d) throw new DomainError('Spende nicht gefunden.');
-      if (d.status === 'AVAILABLE') throw new DomainError('Die Spende ist älter als 4 Tage und kann nicht mehr reserviert werden.');
-      throw new DomainError('Die Spende ist nicht mehr verfügbar.');
+  if (!Number.isInteger(pallets) || pallets < 1) throw new DomainError('Bitte mindestens eine Palette wählen.');
+
+  for (let attempt = 0; attempt < CLAIM_ATTEMPTS; attempt++) {
+    const d = await prisma.donation.findUnique({ where: { id: donationId } });
+    if (!d) throw new DomainError('Spende nicht gefunden.');
+    if (d.status === 'WITHDRAWN') throw new DomainError('Der Spender hat dieses Angebot zurückgezogen.');
+    const now = new Date();
+    if (d.createdAt <= freshnessCutoff(now)) throw new DomainError('Die Spende ist älter als 4 Tage und kann nicht mehr reserviert werden.');
+    if (d.overlapEnd <= now) throw new DomainError('Das Abholfenster ist bereits vorbei. Die Spende kann nicht mehr abgeholt werden.');
+    const left = remainingPallets(d);
+    if (d.status !== 'AVAILABLE' || left === 0) throw new DomainError('Die Spende ist bereits vollständig reserviert.');
+    if (pallets > left) {
+      throw new DomainError(`Es ${left === 1 ? 'ist nur noch 1 Palette' : `sind nur noch ${left} Paletten`} verfügbar.`);
     }
-    return tx.claim.create({ data: { donationId, foodbankId: foodbank.id } });
-  });
+
+    const claimed = d.claimedPallets + pallets;
+    const claim = await prisma.$transaction(async (tx) => {
+      const { count } = await tx.donation.updateMany({
+        where: { id: donationId, status: 'AVAILABLE', claimedPallets: d.claimedPallets, numberOfPallets: d.numberOfPallets },
+        data: { claimedPallets: claimed, status: claimed === d.numberOfPallets ? 'CLAIMED' : 'AVAILABLE' },
+      });
+      if (count === 0) return null; // someone else reserved in between: read again
+      return tx.claim.create({ data: { donationId, foodbankId: foodbank.id, pallets } });
+    });
+    if (claim) {
+      return { claim, productName: d.productName, remainingPallets: d.numberOfPallets - claimed, weightKg: pallets * d.weightPerPallet };
+    }
+  }
+  throw new DomainError('Das Angebot wurde gerade von einer anderen Stelle reserviert. Bitte erneut versuchen.');
 }
 
 // ------------------------------------------------------------- logistics
-const plannedSelect = {
-  id: true, productName: true, category: true, temperatureRange: true, numberOfPallets: true, weightPerPallet: true,
-  overlapStart: true, overlapEnd: true,
-} as const;
-
-/** Pickup of a bundle: 12:00 Europe/Zurich on the day of the earliest window end. */
-export function bundlePickupTime(donations: { overlapEnd: Date }[]): Date {
-  const earliestEnd = donations.reduce((min, d) => (d.overlapEnd < min ? d.overlapEnd : min), donations[0].overlapEnd);
-  return zurichNoonOf(earliestEnd);
-}
+/** One truck stop: the same donor at the same address. */
+const locationKey = (donorId: string, pickupAddress: string) => `${donorId}|${normalizeAddress(pickupAddress)}`;
 
 /** Computes the Galliker consolidation proposal without writing anything. */
 export async function planBundling(dispatcher: Profile): Promise<PlannedGroup[]> {
   if (dispatcher.role !== 'DISPATCHER') throw new DomainError('Nur Disponenten können bündeln.');
-  const claimed = await prisma.donation.findMany({
-    where: { status: 'CLAIMED', transportOrderId: null },
-    select: { ...plannedSelect, donorId: true, donor: { select: { id: true, username: true, organizationName: true, address: true } } },
-    orderBy: { overlapEnd: 'asc' },
+  const waiting = await prisma.claim.findMany({
+    where: { status: 'RESERVED', transportOrderId: null },
+    include: {
+      donation: { include: { donor: { select: { id: true, username: true, organizationName: true, address: true } } } },
+      foodbank: { select: { organizationName: true } },
+    },
+    orderBy: { claimedAt: 'asc' },
   });
+  const items = waiting.map((c) => ({
+    donorId: c.donation.donorId, pickupAddress: c.donation.pickupAddress, donor: c.donation.donor,
+    overlapStart: c.donation.overlapStart, overlapEnd: c.donation.overlapEnd,
+    planned: {
+      id: c.id, productName: c.donation.productName, category: c.donation.category, temperatureRange: c.donation.temperatureRange,
+      pallets: c.pallets, weightPerPallet: c.donation.weightPerPallet, overlapStart: c.donation.overlapStart,
+      overlapEnd: c.donation.overlapEnd, foodbankName: c.foodbank.organizationName,
+    },
+  }));
+
   const groups = new Map<string, PlannedGroup>();
-  for (const { donorId, bundle } of planTransportOrders(claimed)) {
-    const donor = bundle.donations[0].donor;
-    const group = groups.get(donorId) ?? { donor, orders: [] };
+  for (const { key, bundle } of planTransportOrders(items, (i) => locationKey(i.donorId, i.pickupAddress))) {
+    const first = bundle.items[0];
+    const group = groups.get(key) ?? { key, donor: first.donor, pickupAddress: first.pickupAddress, orders: [] };
     group.orders.push({
-      key: `${donorId}-${group.orders.length + 1}`,
-      pickupTime: bundlePickupTime(bundle.donations),
-      donations: bundle.donations.map((d) => ({
-        id: d.id, productName: d.productName, category: d.category, temperatureRange: d.temperatureRange,
-        numberOfPallets: d.numberOfPallets, weightPerPallet: d.weightPerPallet, overlapStart: d.overlapStart, overlapEnd: d.overlapEnd,
-      })),
+      key: `${key}#${group.orders.length + 1}`,
+      pickupStart: bundle.window.start,
+      pickupEnd: bundle.window.end,
+      claims: bundle.items.map((i) => i.planned),
     });
-    groups.set(donorId, group);
+    groups.set(key, group);
   }
   return [...groups.values()];
 }
 
-/** Persists confirmed bundles (from the preview dialog or the automatic plan) in one transaction. */
-export async function createTransportOrders(dispatcher: Profile, bundles: BundleRequest[]): Promise<{ orders: number; positions: number }> {
+/**
+ * Persists confirmed bundles (from the preview dialog or the automatic plan) in one
+ * transaction, then hands every new order to Galliker. A failed hand-over does not
+ * undo the order; it is marked and the dispatcher can send it again.
+ */
+export async function createTransportOrders(dispatcher: Profile, bundles: BundleRequest[]): Promise<BundlingResult> {
   if (dispatcher.role !== 'DISPATCHER') throw new DomainError('Nur Disponenten können Aufträge erstellen.');
   const seen = new Set<number>();
   for (const b of bundles) {
-    if (!b.donorId || !Array.isArray(b.donationIds) || b.donationIds.length === 0) {
-      throw new DomainError('Jeder Auftrag braucht mindestens eine Spende.');
+    if (!b.donorId || !Array.isArray(b.claimIds) || b.claimIds.length === 0) {
+      throw new DomainError('Jeder Auftrag braucht mindestens eine Reservierung.');
     }
-    for (const id of b.donationIds) {
-      if (!Number.isInteger(id) || seen.has(id)) throw new DomainError('Eine Spende kann nur in einem Auftrag liegen.');
+    for (const id of b.claimIds) {
+      if (!Number.isInteger(id) || seen.has(id)) throw new DomainError('Eine Reservierung kann nur in einem Auftrag liegen.');
       seen.add(id);
     }
   }
-  if (bundles.length === 0) return { orders: 0, positions: 0 };
+  if (bundles.length === 0) return { orders: 0, positions: 0, sent: 0, failed: 0 };
 
-  return prisma.$transaction(async (tx) => {
-    let positions = 0;
-    for (const { donorId, donationIds } of bundles) {
-      const donations = await tx.donation.findMany({
-        where: { id: { in: donationIds }, donorId, status: 'CLAIMED', transportOrderId: null },
-        select: { id: true, overlapEnd: true },
+  const orderIds = await prisma.$transaction(async (tx) => {
+    const ids: number[] = [];
+    for (const { donorId, claimIds } of bundles) {
+      const claims = await tx.claim.findMany({
+        where: { id: { in: claimIds }, status: 'RESERVED', transportOrderId: null },
+        select: { id: true, donation: { select: { donorId: true, pickupAddress: true, overlapStart: true, overlapEnd: true } } },
       });
-      if (donations.length !== donationIds.length) {
-        throw new DomainError('Bündelung abgebrochen: mindestens eine Spende ist nicht mehr reserviert, bereits gebündelt oder gehört einem anderen Spender.');
+      if (claims.length !== claimIds.length || claims.some((c) => c.donation.donorId !== donorId)) {
+        throw new DomainError('Bündelung abgebrochen: mindestens eine Reservierung ist bereits in einem Auftrag oder gehört einem anderen Spender.');
       }
-      const order = await tx.transportOrder.create({ data: { donorId, pickupTime: bundlePickupTime(donations) } });
-      const { count } = await tx.donation.updateMany({
-        where: { id: { in: donationIds }, donorId, status: 'CLAIMED', transportOrderId: null },
+      if (new Set(claims.map((c) => normalizeAddress(c.donation.pickupAddress))).size > 1) {
+        throw new DomainError('Ein Auftrag kann nur eine Abholadresse haben. Bitte die Reservierungen auf getrennte Fahrten verteilen.');
+      }
+      const window = bundleWindow(claims.map((c) => c.donation));
+      const order = await tx.transportOrder.create({ data: { donorId, pickupStart: window.start, pickupEnd: window.end } });
+      const { count } = await tx.claim.updateMany({
+        where: { id: { in: claimIds }, status: 'RESERVED', transportOrderId: null },
         data: { status: 'BUNDLED', transportOrderId: order.id },
       });
-      if (count !== donationIds.length) throw new DomainError('Bündelung abgebrochen: Spenden wurden zwischenzeitlich verändert.');
-      positions += count;
+      if (count !== claimIds.length) throw new DomainError('Bündelung abgebrochen: Reservierungen wurden zwischenzeitlich verändert.');
+      ids.push(order.id);
     }
-    return { orders: bundles.length, positions };
+    return ids;
   });
+
+  const handovers = await Promise.all(orderIds.map((id) => sendOrderToGalliker(id)));
+  const sent = handovers.filter((h) => h.ok).length;
+  return { orders: orderIds.length, positions: seen.size, sent, failed: orderIds.length - sent };
 }
 
-/** Runs the automatic consolidation end to end (plan + persist). */
-export async function runBundling(dispatcher: Profile): Promise<{ orders: number; positions: number }> {
+/** Runs the automatic consolidation end to end (plan + persist + hand-over). */
+export async function runBundling(dispatcher: Profile): Promise<BundlingResult> {
   const groups = await planBundling(dispatcher);
   const bundles: BundleRequest[] = groups.flatMap((g) =>
-    g.orders.map((o) => ({ donorId: g.donor.id, donationIds: o.donations.map((d) => d.id) })));
+    g.orders.map((o) => ({ donorId: g.donor.id, claimIds: o.claims.map((c) => c.id) })));
   return createTransportOrders(dispatcher, bundles);
+}
+
+/**
+ * Sends one order to Galliker and records the attempt. Never throws for Galliker
+ * problems; the result and the order's gallikerStatus say what happened.
+ */
+export async function sendOrderToGalliker(orderId: number, config: GallikerConfig = gallikerConfig()): Promise<GallikerResult> {
+  const order = await prisma.transportOrder.findUnique({
+    where: { id: orderId },
+    include: {
+      donor: { select: { organizationName: true, address: true, contactName: true, phone: true } },
+      claims: {
+        include: {
+          donation: { select: { productName: true, category: true, temperatureRange: true, weightPerPallet: true, bestBeforeDate: true, pickupAddress: true } },
+          foodbank: { select: { organizationName: true, address: true } },
+        },
+        orderBy: { id: 'asc' },
+      },
+    },
+  });
+  if (!order) throw new DomainError('Transportauftrag nicht gefunden.');
+
+  const payload = buildGallikerPayload(order);
+  const result = await transmitToGalliker(payload, config);
+  const now = new Date();
+  await prisma.$transaction([
+    prisma.gallikerTransmission.create({
+      data: {
+        orderId, mode: config.mode, endpoint: result.endpoint ?? null, payload: payload as unknown as Prisma.InputJsonValue,
+        status: result.ok ? 'SENT' : 'FAILED', httpStatus: result.httpStatus ?? null,
+        response: result.response === undefined ? Prisma.JsonNull : (result.response as Prisma.InputJsonValue),
+        error: result.ok ? null : result.error,
+      },
+    }),
+    prisma.transportOrder.update({
+      where: { id: orderId },
+      data: result.ok
+        ? { gallikerStatus: 'SENT', gallikerReference: result.reference, gallikerSentAt: now, gallikerError: null }
+        : { gallikerStatus: 'FAILED', gallikerError: result.error },
+    }),
+  ]);
+  return result;
+}
+
+/** The dispatcher retries a hand-over that failed. */
+export async function resendToGalliker(dispatcher: Profile, orderId: number): Promise<{ reference: string }> {
+  if (dispatcher.role !== 'DISPATCHER') throw new DomainError('Nur Disponenten können Aufträge an Galliker senden.');
+  const order = await prisma.transportOrder.findUnique({ where: { id: orderId }, select: { gallikerStatus: true, status: true } });
+  if (!order) throw new DomainError('Transportauftrag nicht gefunden.');
+  if (order.gallikerStatus === 'SENT') throw new DomainError('Dieser Auftrag ist bereits bei Galliker.');
+  if (order.status === 'COMPLETED') throw new DomainError('Dieser Auftrag ist bereits abgeschlossen.');
+  const result = await sendOrderToGalliker(orderId);
+  if (!result.ok) throw new DomainError(`Übermittlung fehlgeschlagen: ${result.error}`);
+  return { reference: result.reference };
 }
 
 const TRANSITIONS: Record<string, TransportStatus> = { PENDING: 'DISPATCHED', DISPATCHED: 'COMPLETED' };
@@ -270,12 +370,11 @@ export async function setOrderStatus(dispatcher: Profile, orderId: number, statu
     }
     const updated = await tx.transportOrder.update({ where: { id: orderId }, data: { status } });
     if (status === 'COMPLETED') {
-      await tx.donation.updateMany({ where: { transportOrderId: orderId }, data: { status: 'COMPLETED' } });
+      await tx.claim.updateMany({ where: { transportOrderId: orderId }, data: { status: 'COMPLETED' } });
     }
     return updated;
   });
 }
-
 
 // ------------------------------------------------------------- wishlists
 export async function createWishlist(foodbank: Profile, input: WishlistInput) {

@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useMemo, useRef, useState, useTransition, type FormEvent, type ReactNode } from 'react';
 import { addPallets, createDonation } from '@/lib/actions';
+import { callAction } from '@/lib/call-action';
 import type { Category, DonationInput, DonationPrefill, OpenDonation } from '@/lib/types';
 import {
   CATEGORIES_OPTIONS, TEMPERATURES, categoryLabel, fmtBestBefore, fmtDate, fmtDayTime, fmtKg, fmtPallets, fmtTime, isTemperaturePreset,
@@ -117,7 +118,7 @@ export function DonationForm({ defaultAddress, organizationName, openDonations, 
   const doMerge = (target: OpenDonation, count: number) => {
     setError(null);
     startTransition(async () => {
-      const result = await addPallets(target.id, count);
+      const result = await callAction(() => addPallets(target.id, count));
       if (result.ok) {
         const d = result.data!;
         setMergeTarget(null);
@@ -142,7 +143,7 @@ export function DonationForm({ defaultAddress, organizationName, openDonations, 
       overlapEnd: new Date(form.overlapEnd).toISOString(),
     };
     startTransition(async () => {
-      const result = await createDonation(input);
+      const result = await callAction(() => createDonation(input));
       if (result.ok) setDone(`«${form.productName.trim()}» ist veröffentlicht. Abgabestellen sehen das Angebot jetzt.`);
       else setError(result.error);
       scrollUp();

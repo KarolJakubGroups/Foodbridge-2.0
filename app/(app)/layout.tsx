@@ -23,6 +23,7 @@ const NAV: Record<Role, NavItem[]> = {
   ],
   DISPATCHER: [
     { href: '/dispatcher', label: 'Transporte planen', short: 'Planen', icon: 'layers' },
+    { href: '/dispatcher/map', label: 'Karte', short: 'Karte', icon: 'map' },
     { href: '/network', label: 'Netzwerk & Wirkung', short: 'Netzwerk', icon: 'chart' },
     { href: '/wishlist', label: 'Gesuchte Produkte', short: 'Gesucht', icon: 'list' },
   ],

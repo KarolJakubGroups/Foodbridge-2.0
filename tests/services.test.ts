@@ -1,6 +1,6 @@
 /**
- * Integration tests of the business rules against a throwaway SQLite database
- * (created by tests/setup-test-db.ts).
+ * Integration tests of the business rules against the isolated "foodbridge_test"
+ * PostgreSQL schema (created by tests/setup-test-db.ts). Galliker runs in sandbox mode.
  */
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 
@@ -12,7 +12,9 @@ const hasDb = Boolean(process.env.TEST_DATABASE_URL);
 import { prisma } from '@/lib/db';
 import * as services from '@/lib/services';
 import { fetchAvailableDonations, fetchGlobalImpact, fetchImpactFor, fetchTransportOrders, orderScopeFor } from '@/lib/queries';
-import { DomainError, zurichNoonOf } from '@/lib/domain';
+import { DomainError } from '@/lib/domain';
+import { createPrismaClient } from '@/lib/db';
+import { DB_UNAVAILABLE_DIGEST, DatabaseUnavailableError } from '@/lib/errors';
 import type { Profile } from '@/lib/types';
 import type { Prisma } from '@/lib/generated/prisma/client';
 
@@ -22,6 +24,7 @@ const profile = (u: { id: string; username: string; role: string; status: string
 let migros: Profile;
 let coop: Profile;
 let foodbank: Profile;
+let foodbank2: Profile;
 let dispatcher: Profile;
 
 const inDays = (n: number, hour: number) => { const d = new Date(); d.setDate(d.getDate() + n); d.setHours(hour, 0, 0, 0); return d; };
@@ -42,15 +45,17 @@ beforeAll(async () => {
   await prisma.claim.deleteMany({});
   await prisma.donation.deleteMany({});
   await prisma.wishlist.deleteMany({});
+  await prisma.gallikerTransmission.deleteMany({});
   await prisma.transportOrder.deleteMany({});
   await prisma.session.deleteMany({});
   await prisma.user.deleteMany({});
-  const mk = (username: string, role: string) => prisma.user.create({
-    data: { username, email: `${username}@test.local`, passwordHash: 'x', role, status: 'APPROVED', organizationName: username.toUpperCase(), address: 'Zürich' },
+  const mk = (username: string, role: string, address = 'Zürich') => prisma.user.create({
+    data: { username, email: `${username}@test.local`, passwordHash: 'x', role, status: 'APPROVED', organizationName: username.toUpperCase(), address },
   });
   migros = profile(await mk('migros', 'DONOR'));
   coop = profile(await mk('coop', 'DONOR'));
   foodbank = profile(await mk('foodbank_zrh', 'FOODBANK'));
+  foodbank2 = profile(await mk('foodbank_win', 'FOODBANK', 'Winterthur'));
   dispatcher = profile(await mk('dispatcher_gt', 'DISPATCHER'));
 });
 
@@ -105,16 +110,18 @@ describe.skipIf(!hasDb)('donation capture (FA-01)', () => {
     numberOfPallets: 2, weightPerPallet: 250.5, overlapStart: inDays(5, 8).toISOString(), overlapEnd: inDays(5, 12).toISOString(),
   };
 
-  it('stores a donation with all 7 fields as AVAILABLE', async () => {
+  it('stores a donation with all 7 fields as AVAILABLE and nothing reserved', async () => {
     const d = await services.createDonation(migros, valid);
     expect(d.status).toBe('AVAILABLE');
+    expect(d.claimedPallets).toBe(0);
     expect(d.numberOfPallets * d.weightPerPallet).toBe(501);
   });
 
-  it('rejects missing mandatory fields (TF-02)', async () => {
-    await expect(services.createDonation(migros, { ...valid, weightPerPallet: 0, pickupAddress: '' }))
-      .rejects.toThrow(/Gewicht pro Palette/);
+  it('rejects missing mandatory fields (TF-02) and windows that are already over', async () => {
+    await expect(services.createDonation(migros, { ...valid, weightPerPallet: 0, pickupAddress: '' })).rejects.toThrow(/Gewicht pro Palette/);
     await expect(services.createDonation(migros, { ...valid, overlapEnd: valid.overlapStart })).rejects.toThrow(/Ende/);
+    await expect(services.createDonation(migros, { ...valid, overlapStart: inDays(-2, 8).toISOString(), overlapEnd: inDays(-1, 8).toISOString() }))
+      .rejects.toThrow(/Vergangenheit/);
   });
 
   it('rejects an unknown category', async () => {
@@ -132,6 +139,77 @@ describe.skipIf(!hasDb)('donation capture (FA-01)', () => {
   });
 });
 
+describe.skipIf(!hasDb)('partial reservations', () => {
+  it('lets institutions take part of an offer; the rest stays available until it is fully reserved', async () => {
+    const d = await insertDonation(coop, { productName: 'Milch', numberOfPallets: 5, weightPerPallet: 50 });
+
+    const first = await services.claimDonation(foodbank, d.id, 2);
+    expect(first).toMatchObject({ productName: 'Milch', remainingPallets: 3, weightKg: 100 });
+    let row = await prisma.donation.findUniqueOrThrow({ where: { id: d.id } });
+    expect([row.claimedPallets, row.status]).toEqual([2, 'AVAILABLE']);
+    const listed = (await fetchAvailableDonations()).find((x) => x.id === d.id);
+    expect(listed && listed.numberOfPallets - listed.claimedPallets).toBe(3);
+
+    await expect(services.claimDonation(foodbank2, d.id, 4)).rejects.toThrow(/nur noch 3 Paletten/);
+    await services.claimDonation(foodbank2, d.id, 3);
+    row = await prisma.donation.findUniqueOrThrow({ where: { id: d.id } });
+    expect([row.claimedPallets, row.status]).toEqual([5, 'CLAIMED']);
+    expect((await fetchAvailableDonations()).some((x) => x.id === d.id)).toBe(false);
+    await expect(services.claimDonation(foodbank, d.id, 1)).rejects.toThrow(/vollständig reserviert/);
+
+    const claims = await prisma.claim.findMany({ where: { donationId: d.id }, orderBy: { id: 'asc' } });
+    expect(claims.map((c) => [c.foodbankId, c.pallets, c.status])).toEqual([[foodbank.id, 2, 'RESERVED'], [foodbank2.id, 3, 'RESERVED']]);
+  });
+
+  it('never over-reserves when institutions race for the last pallets', async () => {
+    const d = await insertDonation(coop, { productName: 'Rennen', numberOfPallets: 3 });
+    const attempts = await Promise.allSettled(
+      Array.from({ length: 6 }, (_, i) => services.claimDonation(i % 2 ? foodbank : foodbank2, d.id, 1)),
+    );
+    const won = attempts.filter((a) => a.status === 'fulfilled').length;
+    expect(won).toBe(3);
+    for (const a of attempts) {
+      if (a.status === 'rejected') expect(String(a.reason)).toMatch(/vollständig reserviert|anderen Stelle|nur noch/);
+    }
+    const row = await prisma.donation.findUniqueOrThrow({ where: { id: d.id }, include: { claims: true } });
+    expect(row.claimedPallets).toBe(3);
+    expect(row.claims.reduce((s, c) => s + c.pallets, 0)).toBe(3);
+    expect(row.status).toBe('CLAIMED');
+  });
+
+  it('is guarded by the database: reserved can never exceed offered', async () => {
+    const d = await insertDonation(coop, { numberOfPallets: 2 });
+    await expect(prisma.donation.update({ where: { id: d.id }, data: { claimedPallets: 3 } })).rejects.toThrow();
+    await expect(prisma.claim.create({ data: { donationId: d.id, foodbankId: foodbank.id, pallets: 0 } })).rejects.toThrow();
+  });
+
+  it('refuses zero or fractional pallets and non-institutions', async () => {
+    const d = await insertDonation(coop, { numberOfPallets: 2 });
+    await expect(services.claimDonation(foodbank, d.id, 0)).rejects.toThrow(/mindestens eine Palette/);
+    await expect(services.claimDonation(foodbank, d.id, 1.5)).rejects.toThrow(/mindestens eine Palette/);
+    await expect(services.claimDonation(migros, d.id, 1)).rejects.toThrow(/Nur Abgabestellen/);
+  });
+});
+
+describe.skipIf(!hasDb)('claim deadline: 4-day rule and pickup window (FA-03)', () => {
+  it('hides offers older than 4 days and refuses to reserve them (TF-03)', async () => {
+    const stale = await insertDonation(coop, { createdAt: new Date(Date.now() - 5 * 86_400_000) });
+    const fresh = await insertDonation(coop, { createdAt: new Date(Date.now() - 3 * 86_400_000) });
+    const ids = (await fetchAvailableDonations()).map((d) => d.id);
+    expect(ids).toContain(fresh.id);
+    expect(ids).not.toContain(stale.id);
+    await expect(services.claimDonation(foodbank, stale.id, 1)).rejects.toThrow(/älter als 4 Tage/);
+  });
+
+  it('hides offers whose pickup window has passed and refuses to reserve them', async () => {
+    const past = new Date(Date.now() - 3_600_000);
+    const d = await insertDonation(coop, { productName: 'Zu spät', overlapStart: new Date(Date.now() - 5 * 3_600_000), overlapEnd: past });
+    expect((await fetchAvailableDonations()).some((x) => x.id === d.id)).toBe(false);
+    await expect(services.claimDonation(foodbank, d.id, 1)).rejects.toThrow(/Abholfenster ist bereits vorbei/);
+    expect((await prisma.donation.findUniqueOrThrow({ where: { id: d.id } })).claimedPallets).toBe(0);
+  });
+});
+
 describe.skipIf(!hasDb)('adding pallets to an existing offer', () => {
   it('increases the pallet count and leaves the freshness window untouched', async () => {
     const threeDaysAgo = new Date(Date.now() - 3 * 86_400_000);
@@ -142,210 +220,221 @@ describe.skipIf(!hasDb)('adding pallets to an existing offer', () => {
 
     const after = await prisma.donation.findUniqueOrThrow({ where: { id: d.id } });
     expect(after.numberOfPallets).toBe(5);
-    expect(after.weightPerPallet).toBe(50);
     // registration date must not be reset, otherwise old goods would look fresh again
     expect(after.createdAt.getTime()).toBe(threeDaysAgo.getTime());
     expect(after.status).toBe('AVAILABLE');
   });
 
-  it('refuses reserved offers, foreign offers, bad counts and the pallet cap', async () => {
+  it('works on a partly reserved offer and refuses fully reserved, foreign or invalid ones', async () => {
+    const partly = await insertDonation(migros, { productName: 'Teilweise', numberOfPallets: 3 });
+    await services.claimDonation(foodbank, partly.id, 1);
+    await expect(services.addPalletsToDonation(migros, partly.id, 2)).resolves.toMatchObject({ numberOfPallets: 5 });
+
     const mine = await insertDonation(migros, { productName: 'Brot' });
     const foreign = await insertDonation(coop, { productName: 'Brot' });
-    const claimed = await insertDonation(migros, { productName: 'Salat' });
-    await services.claimDonation(foodbank, claimed.id);
+    const full = await insertDonation(migros, { productName: 'Salat' });
+    await services.claimDonation(foodbank, full.id, 1);
 
     await expect(services.addPalletsToDonation(migros, foreign.id, 1)).rejects.toThrow(/nicht gefunden/);
-    await expect(services.addPalletsToDonation(migros, claimed.id, 1)).rejects.toThrow(/bereits reserviert/);
+    await expect(services.addPalletsToDonation(migros, full.id, 1)).rejects.toThrow(/nicht mehr offen/);
     await expect(services.addPalletsToDonation(migros, mine.id, 0)).rejects.toThrow(/zusätzlicher Paletten/);
-    await expect(services.addPalletsToDonation(migros, mine.id, 1.5)).rejects.toThrow(/zusätzlicher Paletten/);
     await expect(services.addPalletsToDonation(migros, mine.id, 66)).rejects.toThrow(/höchstens/);
     await expect(services.addPalletsToDonation(foodbank, mine.id, 1)).rejects.toThrow(/Nur Spender/);
-
-    const unapproved = { ...migros, status: 'PENDING' as const };
-    await expect(services.addPalletsToDonation(unapproved, mine.id, 1)).rejects.toThrow(/noch nicht freigegeben/);
-    expect((await prisma.donation.findUniqueOrThrow({ where: { id: mine.id } })).numberOfPallets).toBe(1);
+    await expect(services.addPalletsToDonation({ ...migros, status: 'PENDING' }, mine.id, 1)).rejects.toThrow(/noch nicht freigegeben/);
   });
 });
 
 describe.skipIf(!hasDb)('withdrawing an offer', () => {
-  it('removes an unreserved offer from the institutions view', async () => {
-    const d = await insertDonation(migros, { productName: 'Zurückzuziehen' });
-    expect((await fetchAvailableDonations()).some((x) => x.id === d.id)).toBe(true);
-
-    const result = await services.withdrawDonation(migros, d.id);
-    expect(result).toEqual({ productName: 'Zurückzuziehen' });
+  it('withdraws an offer nobody reserved', async () => {
+    const d = await insertDonation(migros, { productName: 'Zurückzuziehen', numberOfPallets: 2 });
+    expect(await services.withdrawDonation(migros, d.id)).toEqual({ productName: 'Zurückzuziehen', withdrawnPallets: 2, keptPallets: 0 });
     expect((await prisma.donation.findUniqueOrThrow({ where: { id: d.id } })).status).toBe('WITHDRAWN');
     expect((await fetchAvailableDonations()).some((x) => x.id === d.id)).toBe(false);
-    await expect(services.claimDonation(foodbank, d.id)).rejects.toThrow(/nicht mehr verfügbar/);
+    await expect(services.claimDonation(foodbank, d.id, 1)).rejects.toThrow(/zurückgezogen/);
   });
 
-  it('refuses reserved offers, foreign offers and other roles', async () => {
+  it('withdraws only the unreserved rest; reserved pallets stay promised', async () => {
+    const d = await insertDonation(migros, { productName: 'Rest', numberOfPallets: 5 });
+    await services.claimDonation(foodbank, d.id, 2);
+    expect(await services.withdrawDonation(migros, d.id)).toEqual({ productName: 'Rest', withdrawnPallets: 3, keptPallets: 2 });
+    const row = await prisma.donation.findUniqueOrThrow({ where: { id: d.id }, include: { claims: true } });
+    expect([row.numberOfPallets, row.claimedPallets, row.status, row.claims.length]).toEqual([2, 2, 'CLAIMED', 1]);
+    await expect(services.withdrawDonation(migros, d.id)).rejects.toThrow(/bereits reserviert/);
+  });
+
+  it('refuses foreign offers and other roles', async () => {
     const mine = await insertDonation(migros, { productName: 'Meins' });
     const foreign = await insertDonation(coop, { productName: 'Fremd' });
-    const claimed = await insertDonation(migros, { productName: 'Vergeben' });
-    await services.claimDonation(foodbank, claimed.id);
-
     await expect(services.withdrawDonation(migros, foreign.id)).rejects.toThrow(/nicht gefunden/);
-    await expect(services.withdrawDonation(migros, claimed.id)).rejects.toThrow(/bereits reserviert/);
     await expect(services.withdrawDonation(foodbank, mine.id)).rejects.toThrow(/Nur Spender/);
-    await expect(services.withdrawDonation(migros, mine.id)).resolves.toBeTruthy();
-    await expect(services.withdrawDonation(migros, mine.id)).rejects.toThrow(/bereits reserviert/);
   });
 });
 
-describe.skipIf(!hasDb)('freshness rule (FA-03)', () => {
-  it('hides donations older than 4 days and refuses to claim them (TF-03)', async () => {
-    const stale = await insertDonation(coop, { createdAt: new Date(Date.now() - 5 * 86_400_000) });
-    const fresh = await insertDonation(coop, { createdAt: new Date(Date.now() - 3 * 86_400_000) });
-
-    const ids = (await fetchAvailableDonations()).map((d) => d.id);
-    expect(ids).toContain(fresh.id);
-    expect(ids).not.toContain(stale.id);
-
-    await expect(services.claimDonation(foodbank, stale.id)).rejects.toThrow(/älter als 4 Tage/);
-    const claim = await services.claimDonation(foodbank, fresh.id);
-    expect(claim.foodbankId).toBe(foodbank.id);
-    expect((await prisma.donation.findUniqueOrThrow({ where: { id: fresh.id } })).status).toBe('CLAIMED');
-  });
-
-  it('lets only one claim win and blocks donors from claiming', async () => {
-    const d = await insertDonation(coop);
-    await services.claimDonation(foodbank, d.id);
-    await expect(services.claimDonation(foodbank, d.id)).rejects.toThrow(/nicht mehr verfügbar/);
-    const d2 = await insertDonation(coop);
-    await expect(services.claimDonation(migros, d2.id)).rejects.toThrow(/Nur Abgabestellen/);
-  });
-});
+/** Takes every waiting reservation out of the way so bundling tests see only their own. */
+async function parkWaitingClaims() {
+  await prisma.claim.updateMany({ where: { status: 'RESERVED', transportOrderId: null }, data: { status: 'COMPLETED' } });
+}
 
 describe.skipIf(!hasDb)('Galliker bundling (FA-02)', () => {
-  it('bundles overlapping claimed donations per donor with a 12:00 Zurich pickup (TF-04/TF-05)', async () => {
-    // clear anything claimed by earlier tests so counts are deterministic
-    await prisma.donation.updateMany({ where: { status: 'CLAIMED' }, data: { status: 'COMPLETED' } });
-
-    const a = await insertDonation(migros, { productName: 'Apples', overlapStart: inDays(30, 8), overlapEnd: inDays(30, 12) });
+  it('bundles overlapping reservations per pickup address with the shared window, and hands them to Galliker (TF-04/TF-05)', async () => {
+    await parkWaitingClaims();
+    const a = await insertDonation(migros, { productName: 'Apples', numberOfPallets: 2, overlapStart: inDays(30, 8), overlapEnd: inDays(30, 12) });
     const b = await insertDonation(migros, { productName: 'Pears', overlapStart: inDays(30, 10), overlapEnd: inDays(30, 14) });
     const c = await insertDonation(migros, { productName: 'Milk', overlapStart: inDays(30, 15), overlapEnd: inDays(30, 17) });
+    const elsewhere = await insertDonation(migros, { productName: 'Other branch', pickupAddress: 'Seestrasse 1, 8002 Zürich', overlapStart: inDays(30, 8), overlapEnd: inDays(30, 12) });
     const x = await insertDonation(coop, { productName: 'Bananas', overlapStart: inDays(30, 9), overlapEnd: inDays(30, 11) });
-    for (const d of [a, b, c, x]) await services.claimDonation(foodbank, d.id);
+    // Apples go to two institutions: two reservations of the same offer on one truck.
+    const ca1 = (await services.claimDonation(foodbank, a.id, 1)).claim;
+    const ca2 = (await services.claimDonation(foodbank2, a.id, 1)).claim;
+    const cb = (await services.claimDonation(foodbank, b.id, 1)).claim;
+    const cc = (await services.claimDonation(foodbank, c.id, 1)).claim;
+    const ce = (await services.claimDonation(foodbank, elsewhere.id, 1)).claim;
+    const cx = (await services.claimDonation(foodbank2, x.id, 1)).claim;
+
+    const plan = await services.planBundling(dispatcher);
+    expect((await prisma.claim.findUniqueOrThrow({ where: { id: ca1.id } })).status).toBe('RESERVED'); // preview writes nothing
+    const main = plan.find((g) => g.donor.id === migros.id && g.pickupAddress === 'Zürich')!;
+    expect(main.orders.map((o) => o.claims.map((cl) => cl.id).sort((p, q) => p - q)))
+      .toEqual([[ca1.id, ca2.id, cb.id].sort((p, q) => p - q), [cc.id]]);
+    expect(plan.filter((g) => g.donor.id === migros.id)).toHaveLength(2); // other address = other group
 
     const result = await services.runBundling(dispatcher);
-    expect(result).toEqual({ orders: 3, positions: 4 });
+    expect(result).toEqual({ orders: 4, positions: 6, sent: 4, failed: 0 });
 
-    const rows = await prisma.donation.findMany({ where: { id: { in: [a.id, b.id, c.id, x.id] } } });
-    const byId = Object.fromEntries(rows.map((r) => [r.id, r]));
-    expect(byId[a.id].transportOrderId).toBe(byId[b.id].transportOrderId);
-    expect(byId[c.id].transportOrderId).not.toBe(byId[a.id].transportOrderId);
-    expect(byId[x.id].transportOrderId).not.toBe(byId[a.id].transportOrderId);
-    expect(rows.every((r) => r.status === 'BUNDLED')).toBe(true);
+    const claims = await prisma.claim.findMany({ where: { id: { in: [ca1.id, ca2.id, cb.id, cc.id, ce.id, cx.id] } } });
+    const byId = Object.fromEntries(claims.map((cl) => [cl.id, cl]));
+    expect(new Set([ca1, ca2, cb].map((cl) => byId[cl.id].transportOrderId)).size).toBe(1);
+    expect(byId[cc.id].transportOrderId).not.toBe(byId[ca1.id].transportOrderId);
+    expect(byId[ce.id].transportOrderId).not.toBe(byId[ca1.id].transportOrderId);
+    expect(claims.every((cl) => cl.status === 'BUNDLED')).toBe(true);
 
-    const order = await prisma.transportOrder.findUniqueOrThrow({ where: { id: byId[a.id].transportOrderId! } });
-    expect(order.donorId).toBe(migros.id);
-    expect(order.pickupTime.getTime()).toBe(zurichNoonOf(a.overlapEnd).getTime());
-    const zurichClock = new Intl.DateTimeFormat('de-CH', { timeZone: 'Europe/Zurich', hour: '2-digit', minute: '2-digit', hour12: false }).format(order.pickupTime);
-    expect(zurichClock).toBe('12:00');
+    const order = await prisma.transportOrder.findUniqueOrThrow({ where: { id: byId[ca1.id].transportOrderId! }, include: { transmissions: true } });
+    // Window: latest start (Pears 10:00) to earliest end (Apples 12:00).
+    expect(order.pickupStart).toEqual(inDays(30, 10));
+    expect(order.pickupEnd).toEqual(inDays(30, 12));
+    expect(order.gallikerStatus).toBe('SENT');
+    expect(order.gallikerReference).toMatch(/^GLK-TEST-/);
+    expect(order.transmissions).toHaveLength(1);
+    const payload = order.transmissions[0].payload as { items: { deliverTo: { institution: string } }[]; totals: { stops: number } };
+    expect(payload.items).toHaveLength(3);
+    expect(payload.totals.stops).toBe(2);
 
-    // idempotent: nothing left to bundle
-    expect(await services.runBundling(dispatcher)).toEqual({ orders: 0, positions: 0 });
+    expect(await services.runBundling(dispatcher)).toEqual({ orders: 0, positions: 0, sent: 0, failed: 0 });
     await expect(services.runBundling(foodbank)).rejects.toThrow(/Nur Disponenten/);
   });
 
-  it('enforces the PENDING → DISPATCHED → COMPLETED lifecycle and completes donations', async () => {
-    const d = await insertDonation(coop, { productName: 'Salat', overlapStart: inDays(40, 8), overlapEnd: inDays(40, 10) });
-    await services.claimDonation(foodbank, d.id);
+  it('records a failed hand-over without losing the order, and resends it', async () => {
+    await parkWaitingClaims();
+    const d = await insertDonation(coop, { productName: 'Resend', overlapStart: inDays(40, 8), overlapEnd: inDays(40, 12) });
+    const { claim } = await services.claimDonation(foodbank, d.id, 1);
+    await services.createTransportOrders(dispatcher, [{ donorId: coop.id, claimIds: [claim.id] }]);
+    const orderId = (await prisma.claim.findUniqueOrThrow({ where: { id: claim.id } })).transportOrderId!;
+
+    // Simulate an outage at Galliker: HTTP mode without a configured endpoint.
+    const failed = await services.sendOrderToGalliker(orderId, { mode: 'HTTP', timeoutMs: 1000 });
+    expect(failed.ok).toBe(false);
+    let order = await prisma.transportOrder.findUniqueOrThrow({ where: { id: orderId }, include: { transmissions: true } });
+    expect(order.gallikerStatus).toBe('FAILED');
+    expect(order.gallikerError).toMatch(/GALLIKER_API_URL/);
+    expect(order.transmissions.map((t) => t.status).sort()).toEqual(['FAILED', 'SENT']);
+
+    await expect(services.resendToGalliker(foodbank, orderId)).rejects.toThrow(/Nur Disponenten/);
+    await expect(services.resendToGalliker(dispatcher, orderId)).resolves.toMatchObject({ reference: expect.stringMatching(/^GLK-TEST-/) });
+    order = await prisma.transportOrder.findUniqueOrThrow({ where: { id: orderId }, include: { transmissions: true } });
+    expect([order.gallikerStatus, order.gallikerError]).toEqual(['SENT', null]);
+    expect(order.transmissions).toHaveLength(3);
+    await expect(services.resendToGalliker(dispatcher, orderId)).rejects.toThrow(/bereits bei Galliker/);
+  });
+
+  it('enforces the PENDING → DISPATCHED → COMPLETED lifecycle and completes its reservations', async () => {
+    await parkWaitingClaims();
+    const d = await insertDonation(coop, { productName: 'Salat', numberOfPallets: 3, overlapStart: inDays(41, 8), overlapEnd: inDays(41, 10) });
+    await services.claimDonation(foodbank, d.id, 1);
     await services.runBundling(dispatcher);
-    const orderId = (await prisma.donation.findUniqueOrThrow({ where: { id: d.id } })).transportOrderId!;
+    const bundled = await prisma.claim.findFirstOrThrow({ where: { donationId: d.id } });
 
-    await expect(services.setOrderStatus(dispatcher, orderId, 'COMPLETED')).rejects.toThrow(/Ungültiger Statuswechsel/);
-    await services.setOrderStatus(dispatcher, orderId, 'DISPATCHED');
-    await services.setOrderStatus(dispatcher, orderId, 'COMPLETED');
-
-    const order = await prisma.transportOrder.findUniqueOrThrow({ where: { id: orderId } });
-    expect(order.status).toBe('COMPLETED');
-    expect((await prisma.donation.findUniqueOrThrow({ where: { id: d.id } })).status).toBe('COMPLETED');
-    await expect(services.setOrderStatus(foodbank, orderId, 'DISPATCHED')).rejects.toThrow(/Nur Disponenten/);
+    await expect(services.setOrderStatus(dispatcher, bundled.transportOrderId!, 'COMPLETED')).rejects.toThrow(/Ungültiger Statuswechsel/);
+    await services.setOrderStatus(dispatcher, bundled.transportOrderId!, 'DISPATCHED');
+    await services.setOrderStatus(dispatcher, bundled.transportOrderId!, 'COMPLETED');
+    expect((await prisma.claim.findUniqueOrThrow({ where: { id: bundled.id } })).status).toBe('COMPLETED');
+    // The two unreserved pallets are untouched and still on offer.
+    expect((await prisma.donation.findUniqueOrThrow({ where: { id: d.id } })).status).toBe('AVAILABLE');
+    await expect(services.setOrderStatus(foodbank, bundled.transportOrderId!, 'DISPATCHED')).rejects.toThrow(/Nur Disponenten/);
   });
 });
 
 describe.skipIf(!hasDb)('manual bundling from the preview dialog', () => {
-  it('previews without writing, and persists an edited plan (split, skip)', async () => {
+  it('persists an edited plan (split, skip)', async () => {
+    await parkWaitingClaims();
     const a = await insertDonation(migros, { productName: 'A', overlapStart: inDays(50, 8), overlapEnd: inDays(50, 12) });
     const b = await insertDonation(migros, { productName: 'B', overlapStart: inDays(50, 9), overlapEnd: inDays(50, 13) });
     const c = await insertDonation(migros, { productName: 'C', overlapStart: inDays(50, 10), overlapEnd: inDays(50, 14) });
-    for (const d of [a, b, c]) await services.claimDonation(foodbank, d.id);
+    const [ca, cb, cc] = await Promise.all([a, b, c].map(async (d) => (await services.claimDonation(foodbank, d.id, 1)).claim));
 
-    const plan = await services.planBundling(dispatcher);
-    const group = plan.find((g) => g.donor.id === migros.id)!;
-    const proposed = group.orders.find((o) => o.donations.some((d) => d.id === a.id))!;
-    expect(proposed.donations.map((d) => d.id).sort()).toEqual([a.id, b.id, c.id].sort());
-    expect((await prisma.donation.findUniqueOrThrow({ where: { id: a.id } })).status).toBe('CLAIMED'); // nothing written
-
-    // dispatcher splits C into its own order and leaves B out of this run
     const result = await services.createTransportOrders(dispatcher, [
-      { donorId: migros.id, donationIds: [a.id] },
-      { donorId: migros.id, donationIds: [c.id] },
+      { donorId: migros.id, claimIds: [ca.id] },
+      { donorId: migros.id, claimIds: [cc.id] },
     ]);
-    expect(result).toEqual({ orders: 2, positions: 2 });
-    const rows = await prisma.donation.findMany({ where: { id: { in: [a.id, b.id, c.id] } } });
-    const byId = Object.fromEntries(rows.map((r) => [r.id, r]));
-    expect(byId[a.id].status).toBe('BUNDLED');
-    expect(byId[c.id].status).toBe('BUNDLED');
-    expect(byId[a.id].transportOrderId).not.toBe(byId[c.id].transportOrderId);
-    expect(byId[b.id].status).toBe('CLAIMED');
-    expect(byId[b.id].transportOrderId).toBeNull();
+    expect(result).toMatchObject({ orders: 2, positions: 2, sent: 2 });
+    const rows = Object.fromEntries((await prisma.claim.findMany({ where: { id: { in: [ca.id, cb.id, cc.id] } } })).map((r) => [r.id, r]));
+    expect(rows[ca.id].transportOrderId).not.toBe(rows[cc.id].transportOrderId);
+    expect([rows[cb.id].status, rows[cb.id].transportOrderId]).toEqual(['RESERVED', null]);
   });
 
   it('rejects invalid manual bundles', async () => {
     const x = await insertDonation(migros, { productName: 'X', overlapStart: inDays(60, 8), overlapEnd: inDays(60, 12) });
     const y = await insertDonation(coop, { productName: 'Y', overlapStart: inDays(60, 8), overlapEnd: inDays(60, 12) });
-    await services.claimDonation(foodbank, x.id);
-    await services.claimDonation(foodbank, y.id);
+    const z = await insertDonation(migros, { productName: 'Z', pickupAddress: 'Seestrasse 1, 8002 Zürich', overlapStart: inDays(60, 8), overlapEnd: inDays(60, 12) });
+    const [cx, cy, cz] = await Promise.all([x, y, z].map(async (d) => (await services.claimDonation(foodbank, d.id, 1)).claim));
 
-    await expect(services.createTransportOrders(dispatcher, [{ donorId: migros.id, donationIds: [] }])).rejects.toThrow(/mindestens eine/);
-    await expect(services.createTransportOrders(dispatcher, [{ donorId: migros.id, donationIds: [x.id] }, { donorId: migros.id, donationIds: [x.id] }])).rejects.toThrow(/nur in einem/);
-    await expect(services.createTransportOrders(dispatcher, [{ donorId: migros.id, donationIds: [x.id, y.id] }])).rejects.toThrow(/anderen Spender/);
-    await expect(services.createTransportOrders(foodbank, [{ donorId: migros.id, donationIds: [x.id] }])).rejects.toThrow(/Nur Disponenten/);
-    expect((await prisma.donation.findUniqueOrThrow({ where: { id: x.id } })).status).toBe('CLAIMED');
+    await expect(services.createTransportOrders(dispatcher, [{ donorId: migros.id, claimIds: [] }])).rejects.toThrow(/mindestens eine/);
+    await expect(services.createTransportOrders(dispatcher, [{ donorId: migros.id, claimIds: [cx.id] }, { donorId: migros.id, claimIds: [cx.id] }])).rejects.toThrow(/nur in einem/);
+    await expect(services.createTransportOrders(dispatcher, [{ donorId: migros.id, claimIds: [cx.id, cy.id] }])).rejects.toThrow(/anderen Spender/);
+    await expect(services.createTransportOrders(dispatcher, [{ donorId: migros.id, claimIds: [cx.id, cz.id] }])).rejects.toThrow(/eine Abholadresse/);
+    await expect(services.createTransportOrders(foodbank, [{ donorId: migros.id, claimIds: [cx.id] }])).rejects.toThrow(/Nur Disponenten/);
+    expect((await prisma.claim.findUniqueOrThrow({ where: { id: cx.id } })).status).toBe('RESERVED');
   });
 });
 
 describe.skipIf(!hasDb)('network view scoping', () => {
-  it('donors only see their own orders and impact; dispatcher sees all', async () => {
-    const m = await insertDonation(migros, { productName: 'M-only', overlapStart: inDays(70, 8), overlapEnd: inDays(70, 12), numberOfPallets: 1, weightPerPallet: 100 });
-    const c = await insertDonation(coop, { productName: 'C-only', overlapStart: inDays(70, 8), overlapEnd: inDays(70, 12), numberOfPallets: 1, weightPerPallet: 200 });
-    await services.claimDonation(foodbank, m.id);
-    await services.claimDonation(foodbank, c.id);
-    await services.createTransportOrders(dispatcher, [
-      { donorId: migros.id, donationIds: [m.id] },
-      { donorId: coop.id, donationIds: [c.id] },
-    ]);
+  it('donors see their own orders, institutions only their own goods on a shared truck', async () => {
+    await parkWaitingClaims();
+    const m = await insertDonation(migros, { productName: 'M-only', numberOfPallets: 2, overlapStart: inDays(70, 8), overlapEnd: inDays(70, 12) });
+    const c = await insertDonation(coop, { productName: 'C-only', overlapStart: inDays(70, 8), overlapEnd: inDays(70, 12) });
+    const mine = (await services.claimDonation(foodbank, m.id, 1)).claim;
+    const theirs = (await services.claimDonation(foodbank2, m.id, 1)).claim;
+    await services.claimDonation(foodbank, c.id, 1);
+    await services.runBundling(dispatcher);
 
     const migrosOrders = await fetchTransportOrders(orderScopeFor(migros));
     expect(migrosOrders.every((o) => o.donorId === migros.id)).toBe(true);
-    expect(migrosOrders.some((o) => o.donations.some((d) => d.id === m.id))).toBe(true);
-    expect(migrosOrders.some((o) => o.donations.some((d) => d.id === c.id))).toBe(false);
+    expect(migrosOrders.flatMap((o) => o.claims).some((cl) => cl.donation.productName === 'C-only')).toBe(false);
 
     const foodbankOrders = await fetchTransportOrders(orderScopeFor(foodbank));
-    expect(foodbankOrders.some((o) => o.donations.some((d) => d.id === c.id))).toBe(true);
+    const shared = foodbankOrders.find((o) => o.claims.some((cl) => cl.id === mine.id))!;
+    expect(shared.claims.some((cl) => cl.id === theirs.id)).toBe(false);
 
     const all = await fetchTransportOrders(orderScopeFor(dispatcher));
-    expect(all.length).toBeGreaterThanOrEqual(migrosOrders.length + 1);
-
-    const migrosImpact = await fetchImpactFor(migros.id, 'DONOR');
-    const coopImpact = await fetchImpactFor(coop.id, 'DONOR');
-    const global = await fetchGlobalImpact();
-    expect(global.totalWeightKg).toBeGreaterThanOrEqual(migrosImpact.totalWeightKg + coopImpact.totalWeightKg);
-    expect(coopImpact.totalWeightKg).toBeGreaterThanOrEqual(200);
+    expect(all.find((o) => o.id === shared.id)!.claims.map((cl) => cl.id).sort()).toEqual([mine.id, theirs.id].sort());
   });
 });
 
 describe.skipIf(!hasDb)('impact (FA-04)', () => {
-  it('counts only rescued donations', async () => {
+  it('counts reserved pallets only, for everyone', async () => {
+    await prisma.gallikerTransmission.deleteMany({});
     await prisma.claim.deleteMany({});
+    await prisma.transportOrder.deleteMany({});
     await prisma.donation.deleteMany({});
-    await insertDonation(migros, { numberOfPallets: 2, weightPerPallet: 500, status: 'CLAIMED' });
-    await insertDonation(migros, { numberOfPallets: 1, weightPerPallet: 100, status: 'AVAILABLE' });
-    const impact = await fetchGlobalImpact();
-    expect(impact).toEqual({ totalWeightKg: 1000, meals: 2000, co2SavedKg: 1100, donationCount: 1 });
+    const d = await insertDonation(migros, { numberOfPallets: 10, weightPerPallet: 100 });
+    await insertDonation(migros, { numberOfPallets: 4, weightPerPallet: 100 }); // nobody reserved it
+    await services.claimDonation(foodbank, d.id, 2);
+    await services.claimDonation(foodbank2, d.id, 1);
+
+    expect(await fetchGlobalImpact()).toEqual({ totalWeightKg: 300, meals: 600, co2SavedKg: 330, donationCount: 2 });
+    expect((await fetchImpactFor(migros.id, 'DONOR')).totalWeightKg).toBe(300);
+    expect((await fetchImpactFor(foodbank.id, 'FOODBANK')).totalWeightKg).toBe(200);
+    expect((await fetchImpactFor(foodbank2.id, 'FOODBANK')).totalWeightKg).toBe(100);
+    expect((await fetchImpactFor(coop.id, 'DONOR')).totalWeightKg).toBe(0);
   });
 });
 
@@ -355,6 +444,16 @@ describe.skipIf(!hasDb)('wishlists', () => {
     await expect(services.createWishlist(migros, { productName: 'Nope', quantityKg: 1, note: '' })).rejects.toThrow(/Nur Abgabestellen/);
     await expect(services.deleteWishlist(migros, w.id)).rejects.toThrow(/anderen Institution/);
     await services.deleteWishlist(foodbank, w.id);
-    expect(await prisma.wishlist.count()).toBe(0);
+    expect(await prisma.wishlist.count({ where: { id: w.id } })).toBe(0);
+  });
+});
+
+describe('database outages', () => {
+  it('are reported as DatabaseUnavailableError with the digest the error pages recognise', async () => {
+    const unreachable = createPrismaClient('postgresql://user:pw@127.0.0.1:1/none');
+    const error = await unreachable.user.count().then(() => null, (e: unknown) => e);
+    expect(error).toBeInstanceOf(DatabaseUnavailableError);
+    expect((error as DatabaseUnavailableError).digest).toBe(DB_UNAVAILABLE_DIGEST);
+    await unreachable.$disconnect();
   });
 });

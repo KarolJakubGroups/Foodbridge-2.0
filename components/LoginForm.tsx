@@ -2,12 +2,16 @@
 
 import { useActionState, useRef } from 'react';
 import { login } from '@/lib/actions';
+import { callAction } from '@/lib/call-action';
 import { DEMO_ACCOUNTS, DEMO_PASSWORD, type ActionResult } from '@/lib/types';
 import { ROLE_LABEL } from '@/lib/format';
 import { Alert, Field, btn, inputCls } from '@/components/ui';
 
+/** Offline or a dropped connection shows a message instead of an error page; the redirect after success passes through. */
+const submitLogin = (prev: ActionResult | null, formData: FormData) => callAction(() => login(prev, formData));
+
 export function LoginForm() {
-  const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(login, null);
+  const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(submitLogin, null);
   const formRef = useRef<HTMLFormElement>(null);
   const emailRef = useRef<HTMLInputElement>(null);
   const passwordRef = useRef<HTMLInputElement>(null);

@@ -39,23 +39,27 @@ async function main() {
 const [migros, foodbank, dispatcher] = await Promise.all([cookieFor('migros'), cookieFor('foodbank_zrh'), cookieFor('dispatcher_gt')]);
 
 await check('anonymous is redirected', '/donor', null, 307, [], [], '/login');
-await check('login page renders', '/login', null, 200, ['Anmeldung FoodBridge 2.0', 'foodbank_zrh']);
+await check('login page renders', '/login', null, 200, ['Anmelden', 'Demo-Konten']);
 await check('donor dashboard', '/donor', migros, 200,
-  ['Migros Genossenschaft Zürich', 'Neues Angebot registrieren', 'Äpfel Gala', 'Offen', 'Reserviert', 'Wirkung', 'Aktuell gesucht'],
+  ['Migros Genossenschaft Zürich', 'Überschuss melden', 'Meine Angebote', 'Äpfel Gala', 'Ihre Wirkung'],
   // the raw statuses may appear in serialized props, but must never be rendered as text
-  ['>AVAILABLE<', '>CLAIMED<']);
+  ['>AVAILABLE<', '>CLAIMED<', '>BUNDLED<']);
 await check('donor cannot open foodbank view', '/foodbank', migros, 307, [], [], '/donor');
-await check('foodbank dashboard hides stale donation (TF-03)', '/foodbank', foodbank, 200, ['Abgabestelle Allokation: FOODBANK_ZRH', 'Milch UHT 1l'], ['Joghurt Nature']);
-await check('dispatcher dashboard', '/dispatcher', dispatcher, 200, ['Galliker Logistik-Konsolidierungszentrum', 'Bündelung vorschlagen']);
-await check('network view for foodbank', '/network', foodbank, 200, ['Meine Lieferungen', 'Gerettetes Gewicht']);
-await check('network view for dispatcher is national', '/network', dispatcher, 200, ['Logistik-Netzwerk', 'Alle Transportaufträge']);
+await check('foodbank sees offers with countdown, hides stale ones (TF-03)', '/foodbank', foodbank, 200,
+  ['Verfügbare Lebensmittel', 'Milch UHT 1l', 'reservierbar', 'Meine Reservierungen'], ['Joghurt Nature']);
+await check('dispatcher board', '/dispatcher', dispatcher, 200, ['Transporte planen', 'Vorschlag erstellen', 'Abholfenster', 'Karte ansehen']);
+await check('dispatcher map', '/dispatcher/map', dispatcher, 200, ['Karte', 'Abholadressen']);
+await check('map is for dispatchers only', '/dispatcher/map', foodbank, 307, [], [], '/foodbank');
+await check('network view for foodbank', '/network', foodbank, 200, ['Meine Lieferungen']);
+await check('network view for dispatcher is national', '/network', dispatcher, 200, ['Alle Fahrten in der Schweiz']);
 await check('network view for donor shows only own data', '/network', migros, 200, ['Meine Transporte'], ['Riedstrasse 10', 'Coop Verteilzentrale']);
-await check('wishlist view', '/wishlist', migros, 200, ['Bedarfsanforderungen sozialer Institutionen', 'Reis']);
+await check('wishlist view', '/wishlist', migros, 200, ['Gesuchte Produkte', 'Reis']);
 await check('logged-in user skips login', '/login', migros, 307, [], [], '/');
 await check('bogus cookie is rejected', '/donor', 'fb_session=nope', 307, [], [], '/login');
 await check('registration page is public', '/register', null, 200, ['Als Spender registrieren', 'Registrierung beantragen']);
-await check('applications tab for foodbank', '/applications', foodbank, 200, ['Offene Anträge', 'Migros Genossenschaft Zürich']);
+await check('applications tab for foodbank', '/applications', foodbank, 200, ['Spender-Anträge']);
 await check('applications tab hidden from donors', '/applications', migros, 307, [], [], '/donor');
+await check('unknown page shows the 404 page', '/gibt-es-nicht', migros, 404, ['Seite nicht gefunden']);
 
 // A pending donor sees the notice instead of the dashboard, and no navigation.
 const pendingUser = await prisma.user.upsert({
@@ -64,7 +68,7 @@ const pendingUser = await prisma.user.upsert({
 });
 const pendingCookie = await cookieForId(pendingUser.id);
 await check('pending donor is sent to /pending', '/donor', pendingCookie, 307, [], [], '/pending');
-await check('pending donor sees review notice', '/pending', pendingCookie, 200, ['Antrag wird geprüft', 'Check AG'], ['Neues Angebot registrieren', 'Logistik-Netzwerk']);
+await check('pending donor sees review notice', '/pending', pendingCookie, 200, ['Check AG'], ['Überschuss melden', 'Meine Transporte']);
 await check('verified donor skips /pending', '/pending', migros, 307, [], [], '/donor');
 await prisma.session.deleteMany({ where: { userId: pendingUser.id } });
 await prisma.user.delete({ where: { id: pendingUser.id } });

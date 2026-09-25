@@ -1,25 +1,35 @@
 import { computeImpact, type ImpactReport } from '@/lib/impact';
-import { RESCUED_STATUSES, donationState, visibleUntil, weightKg, type DonationState } from '@/lib/domain';
+import { claimDeadline, donationState, remainingPallets, type DonationState } from '@/lib/domain';
 
 /** Minimal shape the donor dashboard needs; kept structural so it can be unit-tested without a database. */
+export interface DashboardClaim {
+  pallets: number;
+  status: string;
+  claimedAt: Date;
+  foodbank: { organizationName: string };
+  transportOrder: { id: number; pickupStart: Date; pickupEnd: Date; status: string } | null;
+}
+
 export interface DashboardDonation {
   id: number;
   productName: string;
   category: string;
   status: string;
   numberOfPallets: number;
+  claimedPallets: number;
   weightPerPallet: number;
   bestBeforeDate: string;
   createdAt: Date;
-  transportOrder: { id: number; pickupTime: Date; status: string } | null;
-  claim: { foodbank: { organizationName: string } } | null;
+  overlapEnd: Date;
+  claims: DashboardClaim[];
 }
 
 export interface NextPickup {
   orderId: number;
-  pickupTime: Date;
+  pickupStart: Date;
+  pickupEnd: Date;
   status: string;
-  donations: DashboardDonation[];
+  items: { productName: string; pallets: number; weightKg: number }[];
   totalPallets: number;
   totalWeightKg: number;
 }
@@ -27,10 +37,11 @@ export interface NextPickup {
 export interface DonorDashboard {
   counts: Record<DonationState, number>;
   nextPickup: NextPickup | null;
-  /** Unreserved offers whose visibility ends within a day. */
+  /** Offers still open whose claim deadline is within a day. */
   expiringSoon: DashboardDonation[];
   /** Registered goods whose best-before date is near and that are not collected yet. */
   bestBeforeSoon: DashboardDonation[];
+  /** Offers with pallets left after the claim deadline. */
   expired: DashboardDonation[];
   impact: { thisMonth: ImpactReport; lastMonth: ImpactReport; total: ImpactReport; deltaPercent: number | null };
   topCategories: { category: string; totalWeightKg: number }[];
@@ -38,16 +49,15 @@ export interface DonorDashboard {
 }
 
 const DAY = 86_400_000;
-/** Warn this long before an offer stops being visible / before the best-before date. */
+/** Warn this long before an offer can no longer be reserved / before the best-before date. */
 export const EXPIRY_WARNING_MS = DAY;
 export const BEST_BEFORE_WARNING_DAYS = 2;
 
-const isRescued = (d: DashboardDonation) => (RESCUED_STATUSES as readonly string[]).includes(d.status);
 const monthKey = (d: Date) => d.getFullYear() * 12 + d.getMonth();
 const isoDate = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
 export function buildDonorDashboard(donations: DashboardDonation[], now = new Date()): DonorDashboard {
-  const counts: Record<DonationState, number> = { OPEN: 0, EXPIRED: 0, RESERVED: 0, SCHEDULED: 0, COLLECTED: 0, WITHDRAWN: 0 };
+  const counts: Record<DonationState, number> = { OPEN: 0, PARTIAL: 0, EXPIRED: 0, RESERVED: 0, SCHEDULED: 0, COLLECTED: 0, WITHDRAWN: 0 };
   const expiringSoon: DashboardDonation[] = [];
   const bestBeforeSoon: DashboardDonation[] = [];
   const expired: DashboardDonation[] = [];
@@ -56,34 +66,38 @@ export function buildDonorDashboard(donations: DashboardDonation[], now = new Da
   for (const d of donations) {
     const state = donationState(d, now);
     counts[state] += 1;
-    if (state === 'OPEN' && visibleUntil(d.createdAt).getTime() - now.getTime() <= EXPIRY_WARNING_MS) expiringSoon.push(d);
+    const open = state === 'OPEN' || state === 'PARTIAL';
+    if (open && claimDeadline(d).getTime() - now.getTime() <= EXPIRY_WARNING_MS) expiringSoon.push(d);
     if (state === 'EXPIRED') expired.push(d);
-    if (['OPEN', 'RESERVED', 'SCHEDULED'].includes(state) && d.bestBeforeDate <= bestBeforeLimit) bestBeforeSoon.push(d);
+    if ((open || state === 'RESERVED' || state === 'SCHEDULED') && d.bestBeforeDate <= bestBeforeLimit) bestBeforeSoon.push(d);
   }
 
-  // Earliest pickup that is still ahead: donations bundled into an order that is not completed.
-  const openOrders = new Map<number, DashboardDonation[]>();
+  // Earliest pickup still ahead: reservations in an order that is not delivered yet.
+  const openOrders = new Map<number, NextPickup>();
   for (const d of donations) {
-    const o = d.transportOrder;
-    if (!o || o.status === 'COMPLETED') continue;
-    openOrders.set(o.id, [...(openOrders.get(o.id) ?? []), d]);
+    for (const c of d.claims) {
+      const o = c.transportOrder;
+      if (!o || o.status === 'COMPLETED') continue;
+      const entry = openOrders.get(o.id) ?? {
+        orderId: o.id, pickupStart: o.pickupStart, pickupEnd: o.pickupEnd, status: o.status, items: [], totalPallets: 0, totalWeightKg: 0,
+      };
+      const weightKg = c.pallets * d.weightPerPallet;
+      entry.items.push({ productName: d.productName, pallets: c.pallets, weightKg });
+      entry.totalPallets += c.pallets;
+      entry.totalWeightKg += weightKg;
+      openOrders.set(o.id, entry);
+    }
   }
-  let nextPickup: NextPickup | null = null;
-  for (const [orderId, group] of openOrders) {
-    const order = group[0].transportOrder!;
-    if (nextPickup && nextPickup.pickupTime <= order.pickupTime) continue;
-    nextPickup = {
-      orderId, pickupTime: order.pickupTime, status: order.status, donations: group,
-      totalPallets: group.reduce((s, d) => s + d.numberOfPallets, 0),
-      totalWeightKg: group.reduce((s, d) => s + weightKg(d), 0),
-    };
-  }
+  const nextPickup = [...openOrders.values()].sort((a, b) => a.pickupStart.getTime() - b.pickupStart.getTime())[0] ?? null;
 
-  const rescued = donations.filter(isRescued);
+  // Impact: reserved pallets only, attributed to the month they were reserved in.
+  const rescued = donations.flatMap((d) => d.claims.map((c) => ({
+    numberOfPallets: c.pallets, weightPerPallet: d.weightPerPallet, category: d.category, claimedAt: c.claimedAt,
+  })));
   const thisKey = monthKey(now);
   const impact = {
-    thisMonth: computeImpact(rescued.filter((d) => monthKey(d.createdAt) === thisKey)),
-    lastMonth: computeImpact(rescued.filter((d) => monthKey(d.createdAt) === thisKey - 1)),
+    thisMonth: computeImpact(rescued.filter((r) => monthKey(r.claimedAt) === thisKey)),
+    lastMonth: computeImpact(rescued.filter((r) => monthKey(r.claimedAt) === thisKey - 1)),
     total: computeImpact(rescued),
     deltaPercent: null as number | null,
   };
@@ -92,13 +106,16 @@ export function buildDonorDashboard(donations: DashboardDonation[], now = new Da
   }
 
   const byCategory = new Map<string, number>();
-  for (const d of rescued) byCategory.set(d.category, (byCategory.get(d.category) ?? 0) + weightKg(d));
+  for (const r of rescued) byCategory.set(r.category, (byCategory.get(r.category) ?? 0) + r.numberOfPallets * r.weightPerPallet);
   const topCategories = [...byCategory.entries()]
     .map(([category, totalWeightKg]) => ({ category, totalWeightKg }))
     .sort((a, b) => b.totalWeightKg - a.totalWeightKg)
     .slice(0, 3);
 
-  const recipients = [...new Set(donations.flatMap((d) => (d.claim ? [d.claim.foodbank.organizationName] : [])))].sort();
+  const recipients = [...new Set(donations.flatMap((d) => d.claims.map((c) => c.foodbank.organizationName)))].sort();
 
   return { counts, nextPickup, expiringSoon, bestBeforeSoon, expired, impact, topCategories, recipients };
 }
+
+/** Pallets of an offer nobody reserved (for the "withdraw the rest" prompt). */
+export const unreservedPallets = remainingPallets;

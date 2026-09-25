@@ -41,6 +41,7 @@ Für einen Produktionslauf: `npm run build && npm start`.
 | `migros@demo.foodbridge.ch`         | DONOR      | Migros Genossenschaft Zürich        |
 | `coop@demo.foodbridge.ch`           | DONOR      | Coop Verteilzentrale Dietikon       |
 | `foodbank_zrh@demo.foodbridge.ch`   | FOODBANK   | Schweizer Tafel Abgabestelle Zürich |
+| `foodbank_win@demo.foodbridge.ch`   | FOODBANK   | Schweizer Tafel Abgabestelle Winterthur |
 | `dispatcher_gt@demo.foodbridge.ch`  | DISPATCHER | Galliker Transport AG               |
 
 Die Login-Seite hat Schnellauswahl-Buttons für diese Accounts. Der Seed enthält eine 5 Tage alte
@@ -60,17 +61,20 @@ Wirkungsbilanz unter „Logistik-Netzwerk“.
 | Regel | Umsetzung |
 |-------|-----------|
 | 7 Pflichtfelder pro Spende + Warengruppe | `lib/services.ts` (`createDonation`), Formular `components/DonationForm.tsx`; Kategorien in `lib/domain.ts` |
-| 4-Tage-Frist | Lesen: `fetchAvailableDonations` in `lib/queries.ts`; Schreiben: bedingtes `updateMany` in `claimDonation` |
-| Nur eine Institution pro Spende | Atomares `updateMany … WHERE status = 'AVAILABLE'` in einer Transaktion, `UNIQUE` auf `Claim.donationId` |
-| Galliker-Bündelung | Algorithmus in `lib/logistics.ts` (Sortierung nach Fensterende, `start <= bundleEnd`), Persistenz in `runBundling` |
-| Abholtermin 12:00 Uhr | `zurichNoonOf` in `lib/domain.ts`: 12:00 Europe/Zurich des Schnittpunkt-Tages |
-| Statusübergänge PENDING → DISPATCHED → COMPLETED | `setOrderStatus`; COMPLETED setzt auch die Spenden auf COMPLETED |
+| Reservierungsfrist | `claimDeadline` in `lib/domain.ts`: 4 Tage nach Erfassung oder Ende des Abholfensters, je nachdem was früher kommt. Lesen: `fetchAvailableDonations`; Schreiben: Prüfung in `claimDonation`. Die Abgabestelle sieht einen Live-Countdown (`components/ClaimCountdown.tsx`) |
+| Teilreservierungen | Eine Abgabestelle reserviert einzelne Paletten (`Claim.pallets`), der Rest bleibt für andere verfügbar. `Donation.claimedPallets` wird mit optimistischer Sperre erhöht; die Datenbank verbietet per CHECK-Constraint, mehr zu reservieren als angeboten. Bei vollständiger Reservierung wird das Angebot `CLAIMED` («Vollständig reserviert») |
+| Galliker-Bündelung | Algorithmus in `lib/logistics.ts` (Sortierung nach Fensterende, `start <= bundleEnd`). Gebündelt werden Reservierungen, pro Spender und Abholadresse; Persistenz in `createTransportOrders` |
+| Abholfenster | Ein Auftrag trägt das gemeinsame Zeitfenster aller Reservierungen (`pickupStart`–`pickupEnd`, `bundleWindow`) statt einer festen Uhrzeit. Verpasste Fenster werden markiert |
+| Übergabe an Galliker | `lib/galliker.ts`: Neue Aufträge werden automatisch als JSON übermittelt, jeder Versuch in `GallikerTransmission` protokolliert, fehlgeschlagene können erneut gesendet werden. Standard ist die Testverbindung (`GALLIKER_MODE=sandbox`); mit `GALLIKER_MODE=http` geht dasselbe JSON an `GALLIKER_API_URL/transport-orders` |
+| Karte für Disponenten | `/dispatcher/map`: Adressen via OpenStreetMap/Nominatim (`lib/geo.ts`, Cache in `GeocodedAddress`), Fahrtrouten via OSRM (Cache am Auftrag), Darstellung mit Leaflet |
+| Statusübergänge PENDING → DISPATCHED → COMPLETED | `setOrderStatus`; COMPLETED setzt auch die Reservierungen auf COMPLETED |
+| Fehlermeldungen | `lib/errors.ts` erkennt Datenbankausfälle (Prisma P1xxx) und Netzwerkfehler; Aktionen liefern klare Meldungen, Seiten zeigen `app/error.tsx` bzw. `app/not-found.tsx` |
 | Spender-Dashboard | `lib/dashboard.ts` fasst nächste Abholung, ablaufende Angebote, MHD-Warnungen und Wirkung zusammen (reine Funktionen, unit-getestet) |
-| Angebots-Status | `donationState()` leitet aus Status + 4-Tage-Fenster die Anzeige ab (Offen, Abgelaufen, Reserviert, Abholung geplant, Abgeholt, Zurückgezogen) |
-| Zurückziehen | `withdrawDonation` setzt ein noch nicht reserviertes Angebot auf `WITHDRAWN`; es verschwindet aus der Abgabestellen-Ansicht |
+| Angebots-Status | `donationState()` leitet aus Status, Reservierungen und Frist die Anzeige ab (Offen, Teilweise reserviert, Vollständig reserviert, Abholung geplant, Abgeholt, Abgelaufen, Zurückgezogen) |
+| Zurückziehen | `withdrawDonation` zieht nur nicht reservierte Paletten zurück: ohne Reservierungen wird das Angebot `WITHDRAWN`, sonst schrumpft es auf die reservierte Menge |
 | Rollenrechte | Jede Service-Funktion prüft die Rolle; Seiten leiten fremde Rollen um (`lib/auth.ts`) |
 | Spender-Verifizierung | `registerDonor` legt Konten als `PENDING` an; `reviewDonor` (nur FOODBANK) setzt `APPROVED`/`REJECTED`; `createDonation` verlangt `APPROVED`; `requireProfile` leitet Unverifizierte nach `/pending` |
-| Wirkungsbilanz | `lib/impact.ts`: kg = Paletten × Gewicht, 2 Mahlzeiten/kg, 1.1 kg CO₂e/kg |
+| Wirkungsbilanz | `lib/impact.ts`: zählt nur tatsächlich reservierte Paletten (Paletten × Gewicht), 2 Mahlzeiten/kg, 1.1 kg CO₂e/kg |
 
 ## Skripte
 

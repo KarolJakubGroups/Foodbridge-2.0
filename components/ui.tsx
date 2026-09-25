@@ -1,10 +1,10 @@
 import type { ReactNode } from 'react';
 import type { DonationState, TransportStatus, UserStatus } from '@/lib/domain';
-import { APPLICATION_LABEL, STATE_LABEL, TRANSPORT_LABEL, isCold, tempShort } from '@/lib/format';
-import { AlertIcon, CheckIcon, XIcon } from '@/components/icons';
+import { APPLICATION_LABEL, STATE_LABEL, TRANSPORT_LABEL, tempKind, tempLabel, tempShort, type TempKind } from '@/lib/format';
+import { AlertIcon, CheckIcon, SnowflakeIcon, SunIcon, ThermometerIcon, XIcon } from '@/components/icons';
 
 // ------------------------------------------------------------------ tones
-export type Tone = 'green' | 'violet' | 'blue' | 'orange' | 'red' | 'gray' | 'sand' | 'cold';
+export type Tone = 'green' | 'violet' | 'blue' | 'orange' | 'red' | 'gray' | 'sand' | 'cold' | 'frozen';
 
 /** Soft background + dark text of the same hue; every pair passes 4.5:1. */
 export const TONE: Record<Tone, string> = {
@@ -15,7 +15,8 @@ export const TONE: Record<Tone, string> = {
   red: 'bg-[#fdecea] text-[#9b1c14]',
   gray: 'bg-[#eef0f3] text-[#344054]',
   sand: 'bg-[#f3f0ea] text-muted',
-  cold: 'bg-[#e8f3f8] text-[#155e75]',
+  cold: 'bg-[#e0f2f7] text-[#0e5566]',
+  frozen: 'bg-[#dde8fd] text-[#1e3a8a]',
 };
 
 export function Pill({ tone = 'sand', children, className = '', wrap = false }: { tone?: Tone; children: ReactNode; className?: string; wrap?: boolean }) {
@@ -27,7 +28,7 @@ export function Pill({ tone = 'sand', children, className = '', wrap = false }: 
 }
 
 export const STATE_TONE: Record<DonationState, Tone> = {
-  OPEN: 'green', RESERVED: 'violet', SCHEDULED: 'blue', COLLECTED: 'gray', EXPIRED: 'red', WITHDRAWN: 'sand',
+  OPEN: 'green', PARTIAL: 'green', RESERVED: 'violet', SCHEDULED: 'blue', COLLECTED: 'gray', EXPIRED: 'red', WITHDRAWN: 'sand',
 };
 export const TRANSPORT_TONE: Record<TransportStatus, Tone> = { PENDING: 'violet', DISPATCHED: 'orange', COMPLETED: 'gray' };
 const APPLICATION_TONE: Record<UserStatus, Tone> = { PENDING: 'orange', APPROVED: 'green', REJECTED: 'red' };
@@ -47,13 +48,30 @@ export function ApplicationBadge({ status }: { status: string }) {
   return <Pill tone={APPLICATION_TONE[s] ?? 'sand'}>{APPLICATION_LABEL[s] ?? status}</Pill>;
 }
 
-/** Storage chip; a donor's own (possibly long) description may wrap. */
-export function TempPill({ value }: { value: string }) {
-  return <Pill tone={isCold(value) ? 'cold' : 'sand'} wrap>{tempShort(value)}</Pill>;
+const TEMP_STYLE: Record<TempKind, { tone: Tone; Icon: typeof SnowflakeIcon }> = {
+  frozen: { tone: 'frozen', Icon: SnowflakeIcon },
+  chilled: { tone: 'cold', Icon: ThermometerIcon },
+  ambient: { tone: 'orange', Icon: SunIcon },
+  custom: { tone: 'sand', Icon: ThermometerIcon },
+};
+
+/**
+ * Storage chip with an icon so the cold chain is visible at a glance:
+ * snowflake for frozen, blue thermometer for chilled, sun for room temperature.
+ * A donor's own (possibly long) description may wrap.
+ */
+export function TempPill({ value, full = false }: { value: string; full?: boolean }) {
+  const { tone, Icon } = TEMP_STYLE[tempKind(value)];
+  return (
+    <Pill tone={tone} wrap>
+      <Icon className="size-4 shrink-0" />
+      <span>{full ? tempLabel(value) : tempShort(value)}</span>
+    </Pill>
+  );
 }
 
 /** Four-step progress of an offer: offen → reserviert → Abholung geplant → abgeholt. */
-const STEP: Partial<Record<DonationState, number>> = { OPEN: 1, RESERVED: 2, SCHEDULED: 3, COLLECTED: 4 };
+const STEP: Partial<Record<DonationState, number>> = { OPEN: 1, PARTIAL: 1, RESERVED: 2, SCHEDULED: 3, COLLECTED: 4 };
 export function StateProgress({ state }: { state: DonationState }) {
   const step = STEP[state];
   if (!step) return null;
@@ -192,6 +210,16 @@ export function Alert({ kind = 'error', children, onClose }: {
           <XIcon className="size-4" />
         </button>
       )}
+    </div>
+  );
+}
+
+/** How much of an offer is reserved, as a bar: "3 von 5 Paletten reserviert". */
+export function PalletBar({ claimed, total, className = '' }: { claimed: number; total: number; className?: string }) {
+  const pct = total > 0 ? Math.round((claimed / total) * 100) : 0;
+  return (
+    <div className={`h-2 w-full rounded-full bg-line overflow-hidden ${className}`} role="img" aria-label={`${claimed} von ${total} Paletten reserviert`}>
+      <div className="h-full rounded-full bg-brand-700" style={{ width: `${pct}%` }} />
     </div>
   );
 }

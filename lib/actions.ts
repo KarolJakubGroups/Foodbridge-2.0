@@ -1,31 +1,53 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { redirect } from 'next/navigation';
+import { redirect, unstable_rethrow } from 'next/navigation';
+import { after } from 'next/server';
 import bcrypt from 'bcryptjs';
 import { prisma } from '@/lib/db';
 import { createSession, destroySession } from '@/lib/session';
 import { requireProfile } from '@/lib/auth';
 import * as services from '@/lib/services';
 import { DomainError, type Role, type TransportStatus } from '@/lib/domain';
+import { MESSAGES, isDatabaseUnavailable } from '@/lib/errors';
+import { coordinatesFor } from '@/lib/geo';
 import { ROLE_HOME } from '@/lib/format';
-import type { ActionResult, BundleRequest, DonationInput, PlannedGroup, RegistrationInput, WishlistInput } from '@/lib/types';
+import type { Profile } from '@/lib/types';
+import type {
+  ActionResult, BundleRequest, BundlingResult, DonationInput, PlannedGroup, RegistrationInput, WishlistInput,
+} from '@/lib/types';
 
-const APP_PATHS = ['/donor', '/foodbank', '/dispatcher', '/network', '/wishlist'];
-function revalidateApp() {
-  for (const p of APP_PATHS) revalidatePath(p);
+const APP_PATHS = ['/donor', '/foodbank', '/dispatcher', '/dispatcher/map', '/network', '/wishlist'];
+
+/** Looks up an address for the dispatcher map after the response is sent; failures only mean a later lookup. */
+function prepareMapLocation(address: string) {
+  after(() => coordinatesFor([address], { maxLookups: 1 }).then(() => undefined, () => undefined));
 }
 
-/** Runs a service call and converts business errors into a user-facing result. */
-async function run<T>(fn: () => Promise<T>, paths: string[] = APP_PATHS): Promise<ActionResult<T>> {
+/** Turns any failure into a message the user can act on. Next.js redirects pass through. */
+function toFailure(error: unknown): { ok: false; error: string } {
+  unstable_rethrow(error);
+  if (error instanceof DomainError) return { ok: false, error: error.message };
+  if (isDatabaseUnavailable(error)) {
+    console.error('[db unavailable]', error);
+    return { ok: false, error: MESSAGES.database };
+  }
+  console.error(error);
+  return { ok: false, error: MESSAGES.unexpected };
+}
+
+/**
+ * Signs the user in (an expired session redirects to /login), runs the service call
+ * and converts business, database and unexpected errors into a result.
+ */
+async function run<T>(fn: (profile: Profile) => Promise<T>, paths: string[] = APP_PATHS): Promise<ActionResult<T>> {
   try {
-    const data = await fn();
+    const profile = await requireProfile();
+    const data = await fn(profile);
     for (const p of paths) revalidatePath(p);
     return { ok: true, data };
   } catch (e) {
-    if (e instanceof DomainError) return { ok: false, error: e.message };
-    console.error(e);
-    return { ok: false, error: 'Unerwarteter Fehler. Bitte erneut versuchen.' };
+    return toFailure(e);
   }
 }
 
@@ -33,14 +55,20 @@ async function run<T>(fn: () => Promise<T>, paths: string[] = APP_PATHS): Promis
 export async function login(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
   const email = String(formData.get('email') ?? '').trim().toLowerCase();
   const password = String(formData.get('password') ?? '');
-  if (!email || !password) return { ok: false, error: 'E-Mail und Passwort sind erforderlich.' };
+  if (!email || !password) return { ok: false, error: 'Bitte E-Mail-Adresse und Passwort eingeben.' };
 
-  const user = await prisma.user.findUnique({ where: { email } });
-  const valid = user ? await bcrypt.compare(password, user.passwordHash) : false;
-  if (!user || !valid) return { ok: false, error: 'Ungültige Anmeldedaten.' };
-
-  await createSession(user.id);
-  redirect(ROLE_HOME[user.role as Role]);
+  let role: Role;
+  try {
+    const user = await prisma.user.findUnique({ where: { email } });
+    // Same message for an unknown address and a wrong password: do not reveal which accounts exist.
+    const valid = user ? await bcrypt.compare(password, user.passwordHash) : false;
+    if (!user || !valid) return { ok: false, error: MESSAGES.login };
+    await createSession(user.id);
+    role = user.role as Role;
+  } catch (e) {
+    return toFailure(e);
+  }
+  redirect(ROLE_HOME[role]);
 }
 
 /** Public self-registration for businesses; logs the new (pending) donor in. */
@@ -54,84 +82,84 @@ export async function register(_prev: ActionResult | null, formData: FormData): 
     password: String(formData.get('password') ?? ''),
     passwordConfirm: String(formData.get('passwordConfirm') ?? ''),
   };
-  let userId: string;
   try {
-    userId = (await services.registerDonor(input)).id;
+    const user = await services.registerDonor(input);
+    await createSession(user.id);
+    prepareMapLocation(user.address);
   } catch (e) {
-    if (e instanceof DomainError) return { ok: false, error: e.message };
-    console.error(e);
-    return { ok: false, error: 'Registrierung fehlgeschlagen. Bitte erneut versuchen.' };
+    return toFailure(e);
   }
-  await createSession(userId);
   redirect('/donor');
 }
 
 export async function reviewDonor(donorId: string, decision: 'APPROVED' | 'REJECTED'): Promise<ActionResult> {
-  const profile = await requireProfile();
-  return run(async () => { await services.reviewDonor(profile, donorId, decision); }, ['/applications']);
+  return run(async (p) => { await services.reviewDonor(p, donorId, decision); }, ['/applications']);
 }
 
 export async function logout(): Promise<void> {
-  await destroySession();
+  try {
+    await destroySession();
+  } catch (e) {
+    unstable_rethrow(e);
+    // Even if the database is down, the cookie is gone after destroySession's delete; go to login regardless.
+    console.error(e);
+  }
   redirect('/login');
 }
 
 // ------------------------------------------------------------- donations
 export async function createDonation(input: DonationInput): Promise<ActionResult> {
-  const profile = await requireProfile();
-  return run(async () => { await services.createDonation(profile, input); });
+  return run(async (p) => {
+    const d = await services.createDonation(p, input);
+    prepareMapLocation(d.pickupAddress);
+  });
 }
 
 /** Adds pallets to an existing open offer of the same donor. */
 export async function addPallets(donationId: number, additionalPallets: number):
   Promise<ActionResult<{ productName: string; numberOfPallets: number; totalWeightKg: number }>> {
-  const profile = await requireProfile();
-  return run(() => services.addPalletsToDonation(profile, donationId, additionalPallets));
+  return run((p) => services.addPalletsToDonation(p, donationId, additionalPallets));
 }
 
-/** Pulls back an own, unreserved offer. */
-export async function withdrawDonation(donationId: number): Promise<ActionResult<{ productName: string }>> {
-  const profile = await requireProfile();
-  return run(() => services.withdrawDonation(profile, donationId));
+/** Pulls back the unreserved pallets of an own offer. */
+export async function withdrawDonation(donationId: number):
+  Promise<ActionResult<{ productName: string; withdrawnPallets: number; keptPallets: number }>> {
+  return run((p) => services.withdrawDonation(p, donationId));
 }
 
 // ---------------------------------------------------------------- claims
-export async function claimDonation(donationId: number): Promise<ActionResult> {
-  const profile = await requireProfile();
-  return run(async () => { await services.claimDonation(profile, donationId); });
+export async function claimDonation(donationId: number, pallets: number):
+  Promise<ActionResult<{ productName: string; remainingPallets: number; weightKg: number }>> {
+  return run(async (p) => {
+    const r = await services.claimDonation(p, donationId, pallets);
+    return { productName: r.productName, remainingPallets: r.remainingPallets, weightKg: r.weightKg };
+  });
 }
 
 // ------------------------------------------------------------- logistics
 /** Computes the bundling proposal for the preview dialog. Writes nothing. */
 export async function previewBundling(): Promise<ActionResult<PlannedGroup[]>> {
-  const profile = await requireProfile();
-  return run(() => services.planBundling(profile), []);
+  return run((p) => services.planBundling(p), []);
 }
 
-/** Persists the bundles the dispatcher confirmed (possibly edited) in the dialog. */
-export async function applyBundling(bundles: BundleRequest[]): Promise<ActionResult<{ orders: number; positions: number }>> {
-  const profile = await requireProfile();
-  return run(() => services.createTransportOrders(profile, bundles));
+/** Persists the bundles the dispatcher confirmed (possibly edited) and hands them to Galliker. */
+export async function applyBundling(bundles: BundleRequest[]): Promise<ActionResult<BundlingResult>> {
+  return run((p) => services.createTransportOrders(p, bundles));
+}
+
+export async function resendToGalliker(orderId: number): Promise<ActionResult<{ reference: string }>> {
+  return run((p) => services.resendToGalliker(p, orderId));
 }
 
 export async function setOrderStatus(orderId: number, status: TransportStatus): Promise<ActionResult> {
-  const profile = await requireProfile();
-  return run(async () => { await services.setOrderStatus(profile, orderId, status); });
+  return run(async (p) => { await services.setOrderStatus(p, orderId, status); });
 }
-
 
 // ------------------------------------------------------------- wishlists
 export async function createWishlist(input: WishlistInput): Promise<ActionResult> {
-  const profile = await requireProfile();
-  return run(async () => { await services.createWishlist(profile, input); }, ['/wishlist']);
+  return run(async (p) => { await services.createWishlist(p, input); }, ['/wishlist', '/donor']);
 }
 
 export async function deleteWishlist(id: number): Promise<ActionResult> {
-  const profile = await requireProfile();
-  return run(async () => { await services.deleteWishlist(profile, id); }, ['/wishlist']);
-}
-
-// keep revalidateApp referenced for callers that need a full refresh
-export async function refreshAll(): Promise<void> {
-  revalidateApp();
+  return run(async (p) => { await services.deleteWishlist(p, id); }, ['/wishlist', '/donor']);
 }

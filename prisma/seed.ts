@@ -1,34 +1,59 @@
 /**
- * Seeds demo accounts and donations (idempotent). Run with `npm run seed`.
+ * Seeds demo accounts, offers and reservations (idempotent). Run with `npm run seed`.
+ *
+ * The data shows every feature on first login:
+ *   - a partial reservation (Milch: 1 of 2 pallets reserved, 1 still free)
+ *   - a transport order with two delivery stops (Zürich and Winterthur), already sent to Galliker's test connection
+ *   - reservations waiting for bundling, an expired offer, and a 5-day-old offer hidden by the 4-day rule
+ * Coordinates of the demo addresses are cached so the dispatcher map works without a geocoding call.
  */
 import bcrypt from 'bcryptjs';
 import { PrismaClient } from '../lib/generated/prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
+import { normalizeAddress } from '../lib/domain';
+import { bundleWindow } from '../lib/logistics';
 
 if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is not set (see .env.example)');
 const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }) });
 const PASSWORD = 'password';
 
 const ACCOUNTS = [
-  { username: 'migros', role: 'DONOR', organizationName: 'Migros Genossenschaft Zürich', address: 'Limmatstrasse 152, 8005 Zürich' },
-  { username: 'coop', role: 'DONOR', organizationName: 'Coop Verteilzentrale Dietikon', address: 'Riedstrasse 10, 8953 Dietikon' },
-  { username: 'foodbank_zrh', role: 'FOODBANK', organizationName: 'Schweizer Tafel Abgabestelle Zürich', address: 'Hohlstrasse 400, 8048 Zürich' },
-  { username: 'dispatcher_gt', role: 'DISPATCHER', organizationName: 'Galliker Transport AG', address: 'Kantonsstrasse 2, 6246 Altishofen' },
+  { username: 'migros', role: 'DONOR', organizationName: 'Migros Genossenschaft Zürich', address: 'Limmatstrasse 152, 8005 Zürich', contactName: 'Sandra Keller', phone: '044 277 21 11' },
+  { username: 'coop', role: 'DONOR', organizationName: 'Coop Verteilzentrale Dietikon', address: 'Riedstrasse 10, 8953 Dietikon', contactName: 'Marco Frei', phone: '044 745 11 00' },
+  { username: 'foodbank_zrh', role: 'FOODBANK', organizationName: 'Schweizer Tafel Abgabestelle Zürich', address: 'Hohlstrasse 400, 8048 Zürich', contactName: null, phone: null },
+  { username: 'foodbank_win', role: 'FOODBANK', organizationName: 'Schweizer Tafel Abgabestelle Winterthur', address: 'Zürcherstrasse 45, 8400 Winterthur', contactName: null, phone: null },
+  { username: 'dispatcher_gt', role: 'DISPATCHER', organizationName: 'Galliker Transport AG', address: 'Kantonsstrasse 2, 6246 Altishofen', contactName: null, phone: null },
 ];
+
+/** Looked up once with Nominatim (OpenStreetMap). */
+const COORDINATES: Record<string, [number, number]> = {
+  'Limmatstrasse 152, 8005 Zürich': [47.3856745, 8.5313593],
+  'Riedstrasse 10, 8953 Dietikon': [47.4200085, 8.3947802],
+  'Hohlstrasse 400, 8048 Zürich': [47.3866606, 8.5036659],
+  'Zürcherstrasse 45, 8400 Winterthur': [47.4987856, 8.7233563],
+  'Kantonsstrasse 2, 6246 Altishofen': [47.2003963, 7.9716205],
+};
 
 const days = (n: number, hour = 9) => { const d = new Date(); d.setDate(d.getDate() + n); d.setHours(hour, 0, 0, 0); return d; };
 const hoursAgo = (h: number) => new Date(Date.now() - h * 3_600_000);
 const dateIn = (n: number) => new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10);
 
 async function main() {
+  for (const [address, [latitude, longitude]] of Object.entries(COORDINATES)) {
+    const query = normalizeAddress(address);
+    await prisma.geocodedAddress.upsert({ where: { query }, update: {}, create: { query, latitude, longitude, displayName: address } });
+  }
+
   const passwordHash = await bcrypt.hash(PASSWORD, 10);
   const users: Record<string, { id: string; address: string }> = {};
   for (const a of ACCOUNTS) {
-    const email = `${a.username}@demo.foodbridge.ch`;
     const u = await prisma.user.upsert({
       where: { username: a.username },
       update: {},
-      create: { username: a.username, email, passwordHash, role: a.role, status: 'APPROVED', organizationName: a.organizationName, address: a.address },
+      create: {
+        username: a.username, email: `${a.username}@demo.foodbridge.ch`, passwordHash, role: a.role, status: 'APPROVED',
+        organizationName: a.organizationName, address: a.address, contactName: a.contactName, phone: a.phone,
+      },
     });
     users[a.username] = { id: u.id, address: u.address };
   }
@@ -39,60 +64,60 @@ async function main() {
     return;
   }
 
-  const { migros, coop, foodbank_zrh: foodbank } = users;
-  const base = (donor: { id: string; address: string }, productName: string, category: string, temperatureRange: string, bestBeforeInDays: number,
-    numberOfPallets: number, weightPerPallet: number, start: Date, end: Date, createdAt: Date, status: string) => ({
-    donorId: donor.id, productName, category, temperatureRange, bestBeforeDate: dateIn(bestBeforeInDays), pickupAddress: donor.address,
-    numberOfPallets, weightPerPallet, overlapStart: start, overlapEnd: end, createdAt, status,
-  });
-
-  const rows = [
-    // Migros: Äpfel + Birnen overlap (-> one Galliker order), Orangen disjoint (-> second order)
-    base(migros, 'Äpfel Gala', 'FRUIT_VEG', 'AMBIENT', 12, 1, 50, days(1), days(3), hoursAgo(1), 'CLAIMED'),
-    base(migros, 'Birnen', 'FRUIT_VEG', 'AMBIENT', 10, 1, 30, days(2), days(4), hoursAgo(1), 'CLAIMED'),
-    base(migros, 'Orangen', 'FRUIT_VEG', 'AMBIENT', 14, 1, 40, days(4), days(5), hoursAgo(1), 'CLAIMED'),
-    base(migros, 'Brot vom Vortag', 'BAKERY', 'AMBIENT', 2, 1, 20, days(1), days(2), hoursAgo(3), 'AVAILABLE'),
-    // Coop
-    base(coop, 'Bananen', 'FRUIT_VEG', 'CHILLED', 6, 1, 30, days(1), days(4), hoursAgo(24), 'CLAIMED'),
-    base(coop, 'Milch UHT 1l', 'DAIRY_EGGS', 'CHILLED', 20, 2, 50, days(1), days(5), hoursAgo(6), 'AVAILABLE'),
-    base(coop, 'Tiefkühl-Gemüse', 'FRUIT_VEG', 'FROZEN', 90, 1, 250, days(2), days(3), hoursAgo(1), 'AVAILABLE'),
-    // Older than 4 days -> hidden from foodbanks by the freshness rule (TF-03)
-    base(coop, 'Joghurt Nature', 'DAIRY_EGGS', 'CHILLED', 5, 1, 60, days(1), days(2), hoursAgo(5 * 24), 'AVAILABLE'),
-    // Nobody reserved this in time: shows as "Abgelaufen" on the donor dashboard
-    base(migros, 'Blattsalat', 'FRUIT_VEG', 'CHILLED', 2, 1, 15, days(1), days(2), hoursAgo(5 * 24), 'AVAILABLE'),
-  ];
-  let claims = 0;
-  for (const row of rows) {
-    const d = await prisma.donation.create({ data: row });
-    if (row.status === 'CLAIMED') {
-      await prisma.claim.create({ data: { donationId: d.id, foodbankId: foodbank.id, claimedAt: hoursAgo(2) } });
-      claims++;
+  const { migros, coop, foodbank_zrh: zrh, foodbank_win: win } = users;
+  const offer = async (donor: { id: string; address: string }, productName: string, category: string, temperatureRange: string,
+    bestBeforeInDays: number, numberOfPallets: number, weightPerPallet: number, start: Date, end: Date, createdAt: Date,
+    claims: { foodbank: { id: string }; pallets: number }[] = []) => {
+    const claimedPallets = claims.reduce((s, c) => s + c.pallets, 0);
+    const d = await prisma.donation.create({
+      data: {
+        donorId: donor.id, productName, category, temperatureRange, bestBeforeDate: dateIn(bestBeforeInDays), pickupAddress: donor.address,
+        numberOfPallets, weightPerPallet, overlapStart: start, overlapEnd: end, createdAt,
+        claimedPallets, status: claimedPallets === numberOfPallets ? 'CLAIMED' : 'AVAILABLE',
+      },
+    });
+    const created = [];
+    for (const c of claims) {
+      created.push(await prisma.claim.create({ data: { donationId: d.id, foodbankId: c.foodbank.id, pallets: c.pallets, claimedAt: hoursAgo(2) } }));
     }
-  }
+    return { donation: d, claims: created };
+  };
+
+  // Migros: Äpfel and Birnen share a pickup window -> one truck to Zürich and Winterthur.
+  const apples = await offer(migros, 'Äpfel Gala', 'FRUIT_VEG', 'AMBIENT', 12, 1, 50, days(1, 7), days(1, 12), hoursAgo(3), [{ foodbank: zrh, pallets: 1 }]);
+  const pears = await offer(migros, 'Birnen', 'FRUIT_VEG', 'COOL', 10, 2, 30, days(1, 8), days(1, 16), hoursAgo(3), [{ foodbank: zrh, pallets: 1 }, { foodbank: win, pallets: 1 }]);
+  // Reserved, waiting for bundling.
+  await offer(migros, 'Orangen', 'FRUIT_VEG', 'AMBIENT', 14, 1, 40, days(3, 7), days(3, 12), hoursAgo(1), [{ foodbank: zrh, pallets: 1 }]);
+  // Still open.
+  await offer(migros, 'Brot vom Vortag', 'BAKERY', 'AMBIENT', 2, 1, 20, days(1, 6), days(1, 10), hoursAgo(3));
+  // Nobody reserved in time: "Abgelaufen" on the donor dashboard.
+  await offer(migros, 'Blattsalat', 'FRUIT_VEG', 'CHILLED', 2, 1, 15, days(-1, 7), days(0, 6), hoursAgo(5 * 24));
+
+  await offer(coop, 'Bananen', 'FRUIT_VEG', 'CHILLED', 6, 1, 30, days(2, 7), days(2, 15), hoursAgo(24), [{ foodbank: win, pallets: 1 }]);
+  // Partial reservation: 1 of 2 pallets taken, the other still available.
+  await offer(coop, 'Milch UHT 1l', 'DAIRY_EGGS', 'CHILLED', 20, 2, 50, days(1, 7), days(3, 17), hoursAgo(6), [{ foodbank: zrh, pallets: 1 }]);
+  await offer(coop, 'Tiefkühl-Gemüse', 'READY_MEALS', 'FROZEN', 90, 3, 250, days(2, 7), days(2, 12), hoursAgo(1));
+  // Older than 4 days -> hidden from institutions by the freshness rule (TF-03).
+  await offer(coop, 'Joghurt Nature', 'DAIRY_EGGS', 'CHILLED', 5, 1, 60, days(1, 7), days(2, 17), hoursAgo(5 * 24));
+
+  // One pickup already planned and handed to Galliker (test connection).
+  const bundled = [...apples.claims, ...pears.claims];
+  const window = bundleWindow([apples.donation, pears.donation]);
+  const order = await prisma.transportOrder.create({
+    data: {
+      donorId: migros.id, pickupStart: window.start, pickupEnd: window.end,
+      gallikerStatus: 'SENT', gallikerReference: 'GLK-TEST-DEMO-001', gallikerSentAt: new Date(),
+    },
+  });
+  await prisma.claim.updateMany({ where: { id: { in: bundled.map((c) => c.id) } }, data: { status: 'BUNDLED', transportOrderId: order.id } });
+
   await prisma.wishlist.createMany({
     data: [
-      { foodbankId: foodbank.id, productName: 'Reis', quantityKg: 200, note: 'Langkornreis, ambient', createdAt: hoursAgo(24) },
-      { foodbankId: foodbank.id, productName: 'Milchprodukte', quantityKg: 100, note: 'Joghurt, Käse (gekühlt)', createdAt: hoursAgo(5) },
+      { foodbankId: zrh.id, productName: 'Reis', quantityKg: 200, note: 'Langkornreis, Raumtemperatur', createdAt: hoursAgo(24) },
+      { foodbankId: win.id, productName: 'Milchprodukte', quantityKg: 100, note: 'Joghurt, Käse (gekühlt)', createdAt: hoursAgo(5) },
     ],
   });
-  // One pickup is already planned so the donor dashboard shows "Nächste Abholung"
-  // from the start; Orangen and Bananen stay reserved for the bundling demo.
-  const planned = await prisma.donation.findMany({
-    where: { donorId: migros.id, productName: { in: ['Äpfel Gala', 'Birnen'] } },
-    select: { id: true, overlapEnd: true },
-  });
-  if (planned.length > 0) {
-    const earliestEnd = planned.reduce((min, d) => (d.overlapEnd < min ? d.overlapEnd : min), planned[0].overlapEnd);
-    const pickupTime = new Date(earliestEnd);
-    pickupTime.setHours(12, 0, 0, 0);
-    const order = await prisma.transportOrder.create({ data: { donorId: migros.id, pickupTime } });
-    await prisma.donation.updateMany({
-      where: { id: { in: planned.map((d) => d.id) } },
-      data: { status: 'BUNDLED', transportOrderId: order.id },
-    });
-  }
-
-  console.log(`seeded ${rows.length} donations, ${claims} claims, 1 transport order, 2 wishlist entries`);
+  console.log('seeded 9 offers, 7 reservations (one partial), 1 transport order with two stops, 2 needs');
 }
 
 main().catch((e) => { console.error(e); process.exit(1); }).finally(() => prisma.$disconnect());

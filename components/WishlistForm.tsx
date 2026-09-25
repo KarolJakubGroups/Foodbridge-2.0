@@ -2,6 +2,7 @@
 
 import { useState, useTransition, type FormEvent } from 'react';
 import { createWishlist } from '@/lib/actions';
+import { callAction } from '@/lib/call-action';
 import { Alert, Field, btn, inputCls } from '@/components/ui';
 
 export function WishlistForm() {
@@ -13,7 +14,7 @@ export function WishlistForm() {
     e.preventDefault();
     setMessage(null);
     startTransition(async () => {
-      const result = await createWishlist({ productName: form.productName, quantityKg: Number(form.quantityKg), note: form.note });
+      const result = await callAction(() => createWishlist({ productName: form.productName, quantityKg: Number(form.quantityKg), note: form.note }));
       if (result.ok) {
         setMessage({ kind: 'ok', text: `«${form.productName.trim()}» ist jetzt für Spender sichtbar.` });
         setForm({ productName: '', quantityKg: '', note: '' });

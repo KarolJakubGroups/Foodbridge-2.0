@@ -51,44 +51,85 @@ model Donation {
   temperatureRange String   // preset (AMBIENT | COOL | CHILLED | SUPERCHILLED | FROZEN) or the donor's own text
   bestBeforeDate   String   // YYYY-MM-DD (date only, no timezone)
   pickupAddress    String
+  /// Pallets offered in total.
   numberOfPallets  Int
+  /// Pallets reserved by institutions so far (sum of claims.pallets); never above numberOfPallets.
+  claimedPallets   Int      @default(0)
   weightPerPallet  Float
   overlapStart     DateTime // pickup window start
   overlapEnd       DateTime // pickup window end
-  status           String   @default("AVAILABLE") // AVAILABLE | CLAIMED | BUNDLED | COMPLETED
-  transportOrderId Int?
-  transportOrder   TransportOrder? @relation(fields: [transportOrderId], references: [id])
+  /// AVAILABLE (pallets left) | CLAIMED (fully reserved) | WITHDRAWN. Logistics state lives on the claims.
+  status           String   @default("AVAILABLE")
   createdAt        DateTime @default(now())
 
-  claim Claim?
+  claims Claim[]
 
   @@index([status, createdAt])
   @@index([donorId, createdAt])
-  @@index([transportOrderId])
 }
 
-/// 1:1 assignment of a donation to the institution that picks it up.
+/// An institution reserves some or all pallets of a donation. Each claim is picked up on its own.
 model Claim {
-  id         Int      @id @default(autoincrement())
-  donationId Int      @unique
-  donation   Donation @relation(fields: [donationId], references: [id])
-  foodbankId String
-  foodbank   User     @relation("FoodbankClaims", fields: [foodbankId], references: [id])
-  claimedAt  DateTime @default(now())
+  id               Int             @id @default(autoincrement())
+  donationId       Int
+  donation         Donation        @relation(fields: [donationId], references: [id])
+  foodbankId       String
+  foodbank         User            @relation("FoodbankClaims", fields: [foodbankId], references: [id])
+  pallets          Int
+  /// RESERVED (waiting for a transport) | BUNDLED (in a transport order) | COMPLETED (delivered)
+  status           String          @default("RESERVED")
+  transportOrderId Int?
+  transportOrder   TransportOrder? @relation(fields: [transportOrderId], references: [id])
+  claimedAt        DateTime        @default(now())
 
+  @@index([donationId])
   @@index([foodbankId, claimedAt])
+  @@index([transportOrderId])
+  @@index([status])
 }
 
-/// Consolidated Galliker pickup bundling several donations of one donor.
+/// Consolidated Galliker pickup bundling several claims at one donor.
 model TransportOrder {
-  id         Int      @id @default(autoincrement())
-  donorId    String
-  donor      User     @relation("DonorOrders", fields: [donorId], references: [id])
-  pickupTime DateTime // 12:00 Europe/Zurich on the intersection day
-  status     String   @default("PENDING") // PENDING | DISPATCHED | COMPLETED
-  createdAt  DateTime @default(now())
+  id                Int       @id @default(autoincrement())
+  donorId           String
+  donor             User      @relation("DonorOrders", fields: [donorId], references: [id])
+  /// Pickup window: the span in which every bundled claim can be collected.
+  pickupStart       DateTime
+  pickupEnd         DateTime
+  status            String    @default("PENDING") // PENDING | DISPATCHED | COMPLETED
+  createdAt         DateTime  @default(now())
+  /// Hand-over to Galliker (lib/galliker.ts): NOT_SENT | SENT | FAILED
+  gallikerStatus    String    @default("NOT_SENT")
+  gallikerReference String?
+  gallikerSentAt    DateTime?
+  gallikerError     String?
+  /// Cached driving route for the dispatcher map (lib/geo.ts); [lng, lat] pairs.
+  routeGeometry     Json?
+  routeDistanceKm   Float?
+  routeDurationMin  Float?
+  routeComputedAt   DateTime?
 
-  donations Donation[]
+  claims        Claim[]
+  transmissions GallikerTransmission[]
+}
+
+/// Every message sent to Galliker, for audit and troubleshooting.
+model GallikerTransmission {
+  id         Int            @id @default(autoincrement())
+  orderId    Int
+  order      TransportOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  /// SANDBOX (simulated, default) | HTTP (real endpoint)
+  mode       String
+  endpoint   String?
+  payload    Json
+  /// SENT | FAILED
+  status     String
+  httpStatus Int?
+  response   Json?
+  error      String?
+  createdAt  DateTime       @default(now())
+
+  @@index([orderId, createdAt])
 }
 
 /// A published need of a social institution.
@@ -100,4 +141,14 @@ model Wishlist {
   quantityKg  Float
   note        String?
   createdAt   DateTime @default(now())
+}
+
+/// Geocoding cache for the dispatcher map (lib/geo.ts). Keyed by the normalised address text;
+/// a row without coordinates records that the lookup found nothing, so it is not repeated on every load.
+model GeocodedAddress {
+  query       String   @id
+  latitude    Float?
+  longitude   Float?
+  displayName String?
+  lookedUpAt  DateTime @default(now())
 }

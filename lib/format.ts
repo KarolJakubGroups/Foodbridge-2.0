@@ -1,4 +1,4 @@
-import type { Category, DonationState, Role, TemperatureRange, TransportStatus, UserStatus } from './domain';
+import type { Category, ClaimStatus, DonationState, Role, TemperatureRange, TransportStatus, UserStatus } from './domain';
 
 const ZURICH = 'Europe/Zurich';
 
@@ -47,6 +47,27 @@ export function fmtDay(iso: Date | string, now: Date): string {
 /** "Morgen, 12:00" / "Fr 26.09., 12:00". */
 export function fmtDayTime(iso: Date | string, now: Date): string {
   return `${fmtDay(iso, now)}, ${fmtTime(iso)}`;
+}
+
+/** "Fr 26.09., 07:00–12:00" or "Fr 26.09., 07:00 – Sa 27.09., 09:00" when the window spans days. */
+export function fmtWindow(start: Date | string, end: Date | string, now: Date): string {
+  if (fmtDateOfInstant(start) === fmtDateOfInstant(end)) return `${fmtDayTime(start, now)}–${fmtTime(end)}`;
+  return `${fmtDayTime(start, now)} – ${fmtDayTime(end, now)}`;
+}
+
+/**
+ * Time left until a deadline in words: "3 Tage 4 Std", "5 Std 20 Min", "12 Min", "weniger als 1 Min".
+ * Null once the deadline has passed.
+ */
+export function fmtTimeLeft(ms: number): string | null {
+  if (ms <= 0) return null;
+  const minutes = Math.floor(ms / 60_000);
+  const days = Math.floor(minutes / 1440);
+  const hours = Math.floor((minutes % 1440) / 60);
+  const mins = minutes % 60;
+  if (days >= 1) return hours > 0 ? `${fmtCount(days, 'Tag', 'Tage')} ${hours} Std` : fmtCount(days, 'Tag', 'Tage');
+  if (hours >= 1) return mins > 0 ? `${hours} Std ${mins} Min` : `${hours} Std`;
+  return minutes >= 1 ? `${minutes} Min` : 'weniger als 1 Min';
 }
 
 /** "Donnerstag, 25. September". */
@@ -131,6 +152,14 @@ export function isCold(value: string): boolean {
   return isTemperaturePreset(value) && value !== 'AMBIENT';
 }
 
+/** Which icon and colour a storage value gets: frozen, chilled (any cold preset), room temperature, or the donor's own text. */
+export type TempKind = 'frozen' | 'chilled' | 'ambient' | 'custom';
+export function tempKind(value: string): TempKind {
+  if (value === 'FROZEN') return 'frozen';
+  if (value === 'AMBIENT') return 'ambient';
+  return isTemperaturePreset(value) ? 'chilled' : 'custom';
+}
+
 export const CATEGORY_LABEL: Record<Category, string> = {
   MEAT_FISH: 'Fleisch & Fisch',
   DAIRY_EGGS: 'Milchprodukte & Eier',
@@ -149,11 +178,18 @@ export function categoryLabel(value: string): string {
 
 export const STATE_LABEL: Record<DonationState, string> = {
   OPEN: 'Offen',
+  PARTIAL: 'Teilweise reserviert',
   EXPIRED: 'Abgelaufen',
-  RESERVED: 'Reserviert',
+  RESERVED: 'Vollständig reserviert',
   SCHEDULED: 'Abholung geplant',
   COLLECTED: 'Abgeholt',
   WITHDRAWN: 'Zurückgezogen',
+};
+
+export const CLAIM_LABEL: Record<ClaimStatus, string> = {
+  RESERVED: 'Reserviert',
+  BUNDLED: 'Transport geplant',
+  COMPLETED: 'Geliefert',
 };
 
 export const TRANSPORT_LABEL: Record<TransportStatus, string> = {

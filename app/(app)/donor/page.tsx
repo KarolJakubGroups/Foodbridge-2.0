@@ -4,9 +4,9 @@ import { requireRole } from '@/lib/auth';
 import { fetchMyDonations, fetchWishlists } from '@/lib/queries';
 import { buildDonorDashboard } from '@/lib/dashboard';
 import {
-  CATEGORY_LABEL, fmtBestBefore, fmtCount, fmtDayTime, fmtKg, fmtLongDate, fmtMonth, fmtNumber, fmtPallets, greeting,
+  CATEGORY_LABEL, fmtBestBefore, fmtCount, fmtDayTime, fmtKg, fmtLongDate, fmtMonth, fmtNumber, fmtPallets, fmtWindow, greeting,
 } from '@/lib/format';
-import { visibleUntil, weightKg, type Category } from '@/lib/domain';
+import { claimDeadline, remainingPallets, type Category } from '@/lib/domain';
 import { Card, PageHeader, Pill, SectionTitle, Stat, TONE, btn, linkCls, type Tone } from '@/components/ui';
 import { AlertIcon, ClockIcon, PlusIcon, TruckIcon } from '@/components/icons';
 import { DonationList } from '@/components/DonationList';
@@ -37,11 +37,11 @@ export default async function DonorPage() {
   const now = new Date();
   const { nextPickup, expiringSoon, bestBeforeSoon, expired, impact, counts, topCategories, recipients } = buildDonorDashboard(donations, now);
 
-  const running = counts.OPEN + counts.RESERVED + counts.SCHEDULED;
+  const running = counts.OPEN + counts.PARTIAL + counts.RESERVED + counts.SCHEDULED;
   const hasActions = Boolean(nextPickup) || expiringSoon.length > 0 || bestBeforeSoon.length > 0 || expired.length > 0;
   const needs = wishlists.slice(0, 4);
   const firstExpiring = expiringSoon.reduce<Date | null>((min, d) => {
-    const until = visibleUntil(d.createdAt);
+    const until = claimDeadline(d);
     return !min || until < min ? until : min;
   }, null);
 
@@ -58,11 +58,14 @@ export default async function DonorPage() {
           <SectionTitle>Heute zu tun</SectionTitle>
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-5">
             {nextPickup && (
-              <ActionCard tone="blue" icon={<TruckIcon />} label="Nächste Abholung" title={`${fmtDayTime(nextPickup.pickupTime, now)} Uhr`}
+              <ActionCard tone="blue" icon={<TruckIcon />} label="Nächste Abholung" title={fmtWindow(nextPickup.pickupStart, nextPickup.pickupEnd, now)}
                 footer={<Link href="/network" className={linkCls}>Details ansehen</Link>}>
                 <p>
-                  Bitte {fmtPallets(nextPickup.totalPallets)} ({fmtKg(nextPickup.totalWeightKg)}) an der Rampe bereitstellen:{' '}
-                  {nextPickup.donations.map((d) => d.productName).join(', ')}.
+                  {nextPickup.pickupEnd < now
+                    ? 'Das Abholfenster ist vorbei, die Abholung steht aber noch aus. Die Disposition meldet sich für einen neuen Termin. '
+                    : 'Galliker holt in diesem Zeitfenster ab. '}
+                  Bitte {fmtPallets(nextPickup.totalPallets)} ({fmtKg(nextPickup.totalWeightKg)}) bereithalten:{' '}
+                  {nextPickup.items.map((i) => `${i.productName} (${fmtPallets(i.pallets)})`).join(', ')}.
                 </p>
               </ActionCard>
             )}
@@ -70,8 +73,8 @@ export default async function DonorPage() {
               <ActionCard tone="orange" icon={<ClockIcon />} label="Bald nicht mehr sichtbar"
                 title={expiringSoon.length === 1 ? expiringSoon[0].productName : `${expiringSoon.length} Angebote`}>
                 <p>
-                  Noch niemand hat reserviert. Institutionen sehen {expiringSoon.length === 1 ? 'es' : 'sie'} nur noch
-                  bis {firstExpiring && fmtDayTime(firstExpiring, now)} Uhr.
+                  Noch nicht alles reserviert. Institutionen können nur noch
+                  bis {firstExpiring && fmtDayTime(firstExpiring, now)} Uhr reservieren.
                 </p>
                 {expiringSoon.length > 1 && <p className="text-muted">{expiringSoon.map((d) => d.productName).join(', ')}</p>}
               </ActionCard>
@@ -88,14 +91,17 @@ export default async function DonorPage() {
               <ActionCard tone="red" icon={<AlertIcon />} label="Nicht abgeholt"
                 title={expired.length === 1 ? expired[0].productName : `${expired.length} Angebote`}
                 footer={<Link href={`/donor/new?from=${expired[0].id}`} className={btn('ghost', 'sm')}>Neu erfassen</Link>}>
-                <p>Nach 4 Tagen hat niemand reserviert. Bitte zurückziehen oder neu erfassen.</p>
+                <p>Die Reservierungsfrist ist vorbei. Bitte die übrigen Paletten zurückziehen oder neu erfassen. Bereits reservierte Paletten bleiben reserviert.</p>
                 <ul className="pt-2 space-y-2">
-                  {expired.map((d) => (
-                    <li key={d.id} className="flex flex-wrap items-center justify-between gap-2">
-                      <span>{expired.length > 1 ? <b>{d.productName}</b> : fmtPallets(d.numberOfPallets)} · {fmtKg(weightKg(d))}</span>
-                      <WithdrawButton donationId={d.id} productName={d.productName} />
-                    </li>
-                  ))}
+                  {expired.map((d) => {
+                    const left = remainingPallets(d);
+                    return (
+                      <li key={d.id} className="flex flex-wrap items-center justify-between gap-2">
+                        <span>{expired.length > 1 && <b>{d.productName}: </b>}{fmtPallets(left)} übrig · {fmtKg(left * d.weightPerPallet)}</span>
+                        <WithdrawButton donationId={d.id} productName={d.productName} remainder={d.claimedPallets > 0 ? left : undefined} />
+                      </li>
+                    );
+                  })}
                 </ul>
               </ActionCard>
             )}

@@ -1,10 +1,10 @@
 import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { requireRole } from '@/lib/auth';
-import { countUnbundledClaimed, fetchTransportOrders } from '@/lib/queries';
+import { countUnbundledClaims, fetchTransportOrders } from '@/lib/queries';
 import { fmtCount } from '@/lib/format';
-import { PageHeader, TONE, linkCls } from '@/components/ui';
-import { LayersIcon } from '@/components/icons';
+import { PageHeader, TONE, btn, linkCls } from '@/components/ui';
+import { LayersIcon, MapIcon } from '@/components/icons';
 import { BundleButton } from '@/components/BundleButton';
 import { OrderCard, OrderSummary } from '@/components/OrderCard';
 
@@ -27,7 +27,7 @@ function Column({ dot, title, count, children, empty }: { dot: string; title: st
 
 export default async function DispatcherPage() {
   await requireRole('DISPATCHER');
-  const [orders, waiting] = await Promise.all([fetchTransportOrders(), countUnbundledClaimed()]);
+  const [orders, waiting] = await Promise.all([fetchTransportOrders(), countUnbundledClaims()]);
   const now = new Date().toISOString();
   const pending = orders.filter((o) => o.status === 'PENDING');
   const underway = orders.filter((o) => o.status === 'DISPATCHED');
@@ -35,18 +35,22 @@ export default async function DispatcherPage() {
 
   return (
     <div className="space-y-8">
-      <PageHeader title="Transporte planen" subtitle="Reservierte Spenden zu Abholfahrten zusammenfassen und den Stand verfolgen." />
+      <PageHeader
+        title="Transporte planen"
+        subtitle="Reservierungen zu Abholfahrten zusammenfassen, an Galliker übermitteln und den Stand verfolgen."
+        actions={<Link href="/dispatcher/map" className={btn('ghost')}><MapIcon className="size-5" />Karte ansehen</Link>}
+      />
 
       <section className="bg-white border border-line rounded-2xl p-5 md:p-7 flex flex-col md:flex-row md:items-center gap-5">
         <span className={`flex size-14 shrink-0 items-center justify-center rounded-2xl ${TONE.green}`}><LayersIcon className="size-7" /></span>
         <div className="flex-1 space-y-1.5">
           <p className="text-xl md:text-[22px] font-bold text-ink">
-            {waiting === 0 ? 'Keine Spenden warten auf einen Transport'
-              : `${fmtCount(waiting, 'reservierte Spende wartet', 'reservierte Spenden warten')} auf einen Transport`}
+            {waiting === 0 ? 'Keine Reservierungen warten auf einen Transport'
+              : `${fmtCount(waiting, 'Reservierung wartet', 'Reservierungen warten')} auf einen Transport`}
           </p>
           <p className="text-base leading-relaxed text-muted max-w-3xl">
-            Spenden vom gleichen Spender mit passenden Abholzeiten werden zu einer Fahrt zusammengefasst.
-            Sie sehen den Vorschlag und können ihn anpassen, bevor Aufträge entstehen.
+            Reservierungen an der gleichen Abholadresse mit passenden Abholzeiten werden zu einer Fahrt zusammengefasst.
+            Sie sehen den Vorschlag und können ihn anpassen. Neue Aufträge gehen automatisch an Galliker.
           </p>
         </div>
         <BundleButton disabled={waiting === 0} />

@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react';
 import { reviewDonor } from '@/lib/actions';
+import { callAction } from '@/lib/call-action';
 import { Alert, btn } from '@/components/ui';
 import { CheckIcon } from '@/components/icons';
 
@@ -15,7 +16,7 @@ export function ApplicationActions({ donorId, status, organizationName, compact 
   const decide = (decision: 'APPROVED' | 'REJECTED') => {
     setError(null);
     startTransition(async () => {
-      const result = await reviewDonor(donorId, decision);
+      const result = await callAction(() => reviewDonor(donorId, decision));
       if (!result.ok) setError(result.error);
       setConfirm(false);
     });
