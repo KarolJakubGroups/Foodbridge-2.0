@@ -26,7 +26,9 @@ export type DonorDonation = DonationWithDonor & {
   transportOrder: { id: number; pickupTime: Date; status: string } | null;
   claim: { foodbank: { organizationName: string } } | null;
 };
-export type ClaimWithDonation = Claim & { donation: DonationWithDonor };
+export type ClaimWithDonation = Claim & {
+  donation: DonationWithDonor & { transportOrder: { pickupTime: Date; status: string } | null };
+};
 export type TransportOrderWithDetails = TransportOrder & { donor: UserSummary; donations: Donation[] };
 export type WishlistWithFoodbank = Wishlist & { foodbank: UserSummary };
 
@@ -49,6 +51,9 @@ export interface WishlistInput {
   quantityKg: number;
   note: string;
 }
+
+/** Values copied into the donor form when an old offer is registered again. */
+export type DonationPrefill = Pick<Donation, 'productName' | 'category' | 'temperatureRange' | 'numberOfPallets' | 'weightPerPallet'>;
 
 /** An own, still-open offer a donor could add pallets to instead of registering a duplicate. */
 export type OpenDonation = Pick<Donation, 'id' | 'productName' | 'category' | 'temperatureRange'

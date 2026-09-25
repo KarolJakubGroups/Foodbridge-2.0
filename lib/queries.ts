@@ -31,7 +31,7 @@ export function fetchAvailableDonations(): Promise<DonationWithDonor[]> {
 export function fetchMyClaims(foodbankId: string): Promise<ClaimWithDonation[]> {
   return prisma.claim.findMany({
     where: { foodbankId },
-    include: { donation: { include: { donor: userSummary } } },
+    include: { donation: { include: { donor: userSummary, transportOrder: { select: { pickupTime: true, status: true } } } } },
     orderBy: { claimedAt: 'desc' },
   });
 }

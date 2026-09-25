@@ -1,7 +1,8 @@
 import { redirect } from 'next/navigation';
 import { isVerified, requireSignedIn } from '@/lib/auth';
 import { ROLE_HOME } from '@/lib/format';
-import { Card } from '@/components/ui';
+import { TONE } from '@/components/ui';
+import { ClockIcon, XIcon } from '@/components/icons';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,19 +12,17 @@ export default async function PendingPage() {
   const rejected = profile.status === 'REJECTED';
 
   return (
-    <div className="max-w-lg mx-auto mt-6 md:mt-12">
-      <Card title={rejected ? 'Antrag abgelehnt' : 'Antrag wird geprüft'} subtitle={profile.organizationName}>
-        {rejected ? (
-          <p className="text-sm text-slate-700">
-            Ihr Antrag als Spender wurde nicht freigegeben. Bitte wenden Sie sich an die Schweizer Tafel, wenn Sie Fragen dazu haben.
-          </p>
-        ) : (
-          <p className="text-sm text-slate-700">
-            Vielen Dank für Ihre Registrierung. Die Schweizer Tafel prüft Ihren Antrag. Sobald er freigegeben ist, können Sie
-            hier Lebensmittelspenden erfassen. Melden Sie sich einfach später erneut an.
-          </p>
-        )}
-      </Card>
+    <div className="max-w-xl mx-auto md:mt-6 bg-white border border-line rounded-2xl p-6 md:p-10 flex flex-col items-center text-center gap-4">
+      <span className={`flex size-14 items-center justify-center rounded-full ${rejected ? TONE.red : TONE.orange}`}>
+        {rejected ? <XIcon className="size-7" /> : <ClockIcon className="size-7" />}
+      </span>
+      <h1 className="font-display text-2xl md:text-3xl font-bold text-ink">{rejected ? 'Antrag abgelehnt' : 'Ihr Antrag wird geprüft'}</h1>
+      <p className="text-base text-muted">{profile.organizationName}</p>
+      <p className="text-lg leading-relaxed text-ink-2 max-w-md">
+        {rejected
+          ? 'Ihr Antrag als Spender wurde nicht freigegeben. Bei Fragen wenden Sie sich bitte an die Schweizer Tafel.'
+          : 'Vielen Dank für Ihre Registrierung. Die Schweizer Tafel prüft Ihre Angaben. Danach können Sie hier Spenden melden. Melden Sie sich einfach später wieder an.'}
+      </p>
     </div>
   );
 }

@@ -1,29 +1,30 @@
 import { requireProfile } from '@/lib/auth';
 import { fetchImpactFor, fetchTransportOrders, orderScopeFor } from '@/lib/queries';
 import { fmtNumber } from '@/lib/format';
-import { Card, Kpi } from '@/components/ui';
+import { EmptyState, PageHeader, SectionTitle, Stat } from '@/components/ui';
+import { TruckIcon } from '@/components/icons';
 import { OrderCard } from '@/components/OrderCard';
 
 export const dynamic = 'force-dynamic';
 
 const COPY = {
   DONOR: {
-    title: 'Meine Transporte & Wirkungsbilanz',
-    subtitle: 'Abholungen durch Galliker Logistics und die Wirkung Ihrer eigenen Spenden.',
-    orders: 'Meine Transportaufträge',
-    empty: 'Noch keine Abholung geplant. Sobald eine Abgabestelle eine Ihrer Spenden reserviert hat und der Transport disponiert ist, erscheint er hier.',
+    title: 'Meine Transporte',
+    subtitle: 'Wann Ihre Spenden abgeholt werden und was sie bewirkt haben.',
+    impact: 'Ihre Spenden bisher',
+    empty: 'Sobald eine Abgabestelle eine Ihrer Spenden reserviert und die Disposition die Fahrt plant, erscheint sie hier.',
   },
   FOODBANK: {
-    title: 'Meine Lieferungen & Wirkungsbilanz',
-    subtitle: 'Transporte mit Ihren reservierten Spenden und die Wirkung Ihrer Allokationen.',
-    orders: 'Transporte mit meinen Reservierungen',
-    empty: 'Noch keine Transporte mit Ihren Reservierungen disponiert.',
+    title: 'Meine Lieferungen',
+    subtitle: 'Fahrten mit Lebensmitteln, die Sie reserviert haben.',
+    impact: 'Bisher für Sie gerettet',
+    empty: 'Sobald die Disposition eine Fahrt mit Ihren Reservierungen plant, erscheint sie hier.',
   },
   DISPATCHER: {
-    title: 'Logistik-Netzwerk & Wirkungsbilanz',
-    subtitle: 'Nationale Übersicht aller Galliker-Transportaufträge und des Impact-Trackings.',
-    orders: 'Alle Transportaufträge',
-    empty: 'Noch keine Transportaufträge disponiert.',
+    title: 'Netzwerk & Wirkung',
+    subtitle: 'Alle Fahrten in der Schweiz und was sie bewirkt haben.',
+    impact: 'Insgesamt gerettet',
+    empty: 'Noch keine Aufträge. Erstellen Sie unter «Transporte planen» einen Vorschlag.',
   },
 } as const;
 
@@ -34,23 +35,48 @@ export default async function NetworkPage() {
     fetchTransportOrders(orderScopeFor(profile)),
     fetchImpactFor(profile.id, profile.role),
   ]);
-  const byStatus = (s: string) => orders.filter((o) => o.status === s).length;
+  const now = new Date().toISOString();
+  const upcoming = orders.filter((o) => o.status !== 'COMPLETED');
+  const delivered = orders.filter((o) => o.status === 'COMPLETED').reverse();
 
   return (
-    <div className="space-y-3 md:space-y-4">
-      <Card title={copy.title} subtitle={copy.subtitle}>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <Kpi label="Gerettetes Gewicht" value={fmtNumber(impact.totalWeightKg)} unit="kg" />
-          <Kpi label="Mahlzeiten" value={fmtNumber(impact.meals, 0)} unit="Portionen" />
-          <Kpi label="CO₂-Einsparung" value={fmtNumber(impact.co2SavedKg)} unit="kg CO₂e" />
-          <Kpi label="Transportaufträge" value={orders.length}
-            unit={`(${byStatus('PENDING')} offen · ${byStatus('DISPATCHED')} unterwegs · ${byStatus('COMPLETED')} erledigt)`} />
+    <div className="space-y-10">
+      <PageHeader title={copy.title} subtitle={copy.subtitle} />
+
+      <section className="space-y-4">
+        <SectionTitle>{copy.impact}</SectionTitle>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+          <Stat className="bg-white border border-line" label="kg Lebensmittel gerettet" value={fmtNumber(impact.totalWeightKg, 0)} />
+          <Stat className="bg-white border border-line" label="Mahlzeiten" value={`≈ ${fmtNumber(impact.meals, 0)}`} />
+          <Stat className="bg-white border border-line" label="kg CO₂ eingespart" value={fmtNumber(impact.co2SavedKg, 0)} />
+          <Stat className="bg-white border border-line" label="Fahrten geplant oder unterwegs" value={upcoming.length} />
         </div>
-      </Card>
-      <Card title={copy.orders}>
-        {orders.length === 0 && <p className="text-xs text-slate-400 py-4 text-center">{copy.empty}</p>}
-        <div className="space-y-3">{orders.map((o) => <OrderCard key={o.id} order={o} readOnly />)}</div>
-      </Card>
+      </section>
+
+      {orders.length === 0 ? (
+        <div className="bg-white border border-line rounded-2xl">
+          <EmptyState icon={<TruckIcon className="size-6" />} title="Noch keine Fahrten">{copy.empty}</EmptyState>
+        </div>
+      ) : (
+        <>
+          {upcoming.length > 0 && (
+            <section className="space-y-4">
+              <SectionTitle aside={String(upcoming.length)}>Anstehend</SectionTitle>
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5 items-start">
+                {upcoming.map((o) => <OrderCard key={o.id} order={o} now={now} readOnly />)}
+              </div>
+            </section>
+          )}
+          {delivered.length > 0 && (
+            <section className="space-y-4">
+              <SectionTitle aside={String(delivered.length)}>Geliefert</SectionTitle>
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5 items-start">
+                {delivered.map((o) => <OrderCard key={o.id} order={o} now={now} readOnly />)}
+              </div>
+            </section>
+          )}
+        </>
+      )}
     </div>
   );
 }

@@ -1,12 +1,29 @@
 @import "tailwindcss";
 
 @theme inline {
-  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
-  --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-sans: var(--font-figtree), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-bricolage), var(--font-figtree), ui-sans-serif, system-ui, sans-serif;
+}
+
+/* FoodBridge palette: warm neutrals, one green for the main action. */
+@theme {
+  --color-brand-50: #e6f2ea;
+  --color-brand-700: #1d6b45;
+  --color-brand-800: #14532d;
+  --color-brand-900: #0f3f22;
+  --color-canvas: #f6f4ef;
+  --color-sand: #faf8f4;
+  --color-line: #e4e0d6;
+  --color-line-soft: #eeeae1;
+  --color-control: #d9d4c7;
+  --color-ink: #1c1b18;
+  --color-ink-2: #3f3b33;
+  --color-muted: #57534a;
+  --color-subtle: #6b6558;
 }
 
 body {
-  @apply bg-slate-100 text-slate-800 font-sans;
+  @apply bg-canvas text-ink font-sans;
 }
 
 @media print {

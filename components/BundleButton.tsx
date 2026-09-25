@@ -3,9 +3,9 @@
 import { useMemo, useState, useTransition } from 'react';
 import { applyBundling, previewBundling } from '@/lib/actions';
 import type { BundleRequest, PlannedDonation, PlannedGroup } from '@/lib/types';
-import { categoryLabel, fmtDateTime, fmtKg, tempLabel } from '@/lib/format';
+import { categoryLabel, fmtCount, fmtDateOfInstant, fmtDayTime, fmtKg, fmtPallets, fmtTime, tempShort } from '@/lib/format';
 import { weightKg, zurichNoonOf } from '@/lib/domain';
-import { Alert, btnDark, btnGhost, btnPrimary, inputCls } from '@/components/ui';
+import { Alert, TONE, btn, inputCls } from '@/components/ui';
 
 const NONE = '__none__';
 
@@ -32,7 +32,7 @@ function buildOrders(group: PlannedGroup, assignment: Assignment, keys: string[]
     .filter((o): o is DisplayOrder => o !== null);
 }
 
-export function BundleButton() {
+export function BundleButton({ disabled = false }: { disabled?: boolean }) {
   const [groups, setGroups] = useState<PlannedGroup[] | null>(null);
   const [assignment, setAssignment] = useState<Assignment>({});
   const [keysByDonor, setKeysByDonor] = useState<Record<string, string[]>>({});
@@ -45,7 +45,7 @@ export function BundleButton() {
       const result = await previewBundling();
       if (!result.ok) return setMessage({ kind: 'error', text: result.error });
       const plan = result.data ?? [];
-      if (plan.length === 0) return setMessage({ kind: 'ok', text: 'Keine neuen reservierten Spenden zur Bündelung vorhanden.' });
+      if (plan.length === 0) return setMessage({ kind: 'ok', text: 'Gerade warten keine reservierten Spenden auf einen Transport.' });
       const a: Assignment = {};
       const k: Record<string, string[]> = {};
       for (const g of plan) {
@@ -89,81 +89,80 @@ export function BundleButton() {
       if (!result.ok) return setMessage({ kind: 'error', text: result.error });
       const { orders, positions } = result.data!;
       setGroups(null);
-      setMessage({ kind: 'ok', text: `${positions} Spende(n) zu ${orders} Transportauftrag/-aufträgen für Galliker zusammengefasst.` });
+      setMessage({ kind: 'ok', text: `${fmtCount(positions, 'Spende', 'Spenden')} in ${fmtCount(orders, 'Auftrag', 'Aufträgen')} zusammengefasst.` });
     });
   };
 
+  const pickupWindow = (d: PlannedDonation) => {
+    const now = new Date();
+    return `${fmtDayTime(d.overlapStart, now)}–${fmtDateOfInstant(d.overlapStart) === fmtDateOfInstant(d.overlapEnd) ? fmtTime(d.overlapEnd) : fmtDayTime(d.overlapEnd, now)}`;
+  };
+
   return (
-    <div className="w-full flex flex-col items-end gap-2">
-      <button type="button" className={btnDark} onClick={open} disabled={pending}>
-        {pending && !groups ? 'Berechne…' : 'Bündelung vorschlagen'}
+    <div className="flex flex-col items-stretch md:items-end gap-3 shrink-0 md:max-w-sm">
+      <button type="button" className={btn('primary', 'lg')} onClick={open} disabled={pending || disabled}>
+        {pending && !groups ? 'Wird berechnet…' : 'Vorschlag erstellen'}
       </button>
-      {message && <div className="w-full"><Alert kind={message.kind} onClose={() => setMessage(null)}>{message.text}</Alert></div>}
+      {message && <Alert kind={message.kind} onClose={() => setMessage(null)}>{message.text}</Alert>}
 
       {groups && (
-        <div className="fixed inset-0 z-30 bg-slate-900/60 flex items-end md:items-center justify-center p-0 md:p-6" role="dialog" aria-modal="true" aria-labelledby="bundle-title">
-          <div className="bg-white w-full md:max-w-4xl max-h-[92vh] md:max-h-[85vh] rounded-t-xl md:rounded-md shadow-xl flex flex-col">
-            <header className="px-4 md:px-5 py-3 border-b border-slate-200">
-              <h2 id="bundle-title" className="text-sm font-bold text-slate-900">Vorschlag prüfen und Aufträge erstellen</h2>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Spenden mit überlappenden Abholfenstern wurden pro Spender zusammengelegt. Sie können jede Spende in einen anderen
-                Auftrag verschieben, einen neuen Auftrag eröffnen oder sie vorerst nicht bündeln. Es wird erst beim Bestätigen gespeichert.
+        <div className="fixed inset-0 z-30 bg-ink/50 flex items-end md:items-center justify-center p-0 md:p-6" role="dialog" aria-modal="true" aria-labelledby="bundle-title">
+          <div className="bg-white w-full md:max-w-4xl max-h-[92vh] md:max-h-[88vh] rounded-t-3xl md:rounded-2xl shadow-xl flex flex-col">
+            <header className="px-5 md:px-7 pt-6 pb-4 border-b border-line-soft space-y-1.5">
+              <h2 id="bundle-title" className="text-xl md:text-2xl font-bold text-ink">Vorschlag prüfen</h2>
+              <p className="text-base text-muted leading-relaxed">
+                Spenden mit passenden Abholzeiten sind pro Spender zu einer Fahrt zusammengefasst. Sie können jede Spende einer
+                anderen Fahrt zuteilen oder vorerst zurückstellen. Gespeichert wird erst mit «Aufträge erstellen».
               </p>
             </header>
 
-            <div className="flex-1 overflow-y-auto px-4 md:px-5 py-4 space-y-5">
+            <div className="flex-1 overflow-y-auto px-5 md:px-7 py-5 space-y-7">
               {display.map(({ group, orders, skipped }) => {
                 const keys = keysByDonor[group.donor.id] ?? [];
-                const labelFor = (key: string) => `Auftrag ${keys.indexOf(key) + 1}`;
+                const labelFor = (key: string) => `Fahrt ${keys.indexOf(key) + 1}`;
                 const rowSelect = (d: PlannedDonation) => (
-                  <select className={`${inputCls} md:w-44 py-1`} value={assignment[d.id]} onChange={(e) => move(group.donor.id, d.id, e.target.value)} aria-label="Auftrag zuweisen">
+                  <select className={`${inputCls} h-11 md:w-48`} value={assignment[d.id]} onChange={(e) => move(group.donor.id, d.id, e.target.value)}
+                    aria-label={`Fahrt für ${d.productName}`}>
                     {keys.map((k) => <option key={k} value={k}>{labelFor(k)}</option>)}
-                    <option value="__new__">Neuer Auftrag…</option>
-                    <option value={NONE}>Nicht bündeln</option>
+                    <option value="__new__">Neue Fahrt…</option>
+                    <option value={NONE}>Zurückstellen</option>
                   </select>
                 );
+                const row = (d: PlannedDonation) => (
+                  <li key={d.id} className="px-4 py-3.5 flex flex-col md:flex-row md:items-center gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="text-base"><b className="text-ink">{d.productName}</b> <span className="text-muted">· {fmtKg(weightKg(d))} · {tempShort(d.temperatureRange)}</span></div>
+                      <div className="text-sm text-subtle">{categoryLabel(d.category)} · abholbereit {pickupWindow(d)}</div>
+                    </div>
+                    {rowSelect(d)}
+                  </li>
+                );
                 return (
-                  <section key={group.donor.id} className="space-y-2">
-                    <h3 className="text-xs font-bold text-slate-900">
-                      {group.donor.organizationName} <span className="font-normal text-slate-500">· {group.donor.address}</span>
-                    </h3>
+                  <section key={group.donor.id} className="space-y-3">
+                    <div>
+                      <h3 className="text-lg font-bold text-ink">{group.donor.organizationName}</h3>
+                      <p className="text-[15px] text-muted">{group.donor.address}</p>
+                    </div>
                     {orders.map((o) => (
-                      <div key={o.key} className={`border rounded-md ${o.overlapWarning ? 'border-amber-400' : 'border-slate-200'}`}>
-                        <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 bg-slate-50 border-b border-slate-200">
-                          <span className="text-xs font-bold">{labelFor(o.key)}</span>
-                          <span className="font-mono text-[11px]">
-                            Termin <b>{fmtDateTime(o.pickupTime)}</b> · {fmtKg(o.donations.reduce((s, d) => s + weightKg(d), 0))} · {o.donations.reduce((s, d) => s + d.numberOfPallets, 0)} Pal
+                      <div key={o.key} className={`rounded-2xl border ${o.overlapWarning ? 'border-[#e0a458]' : 'border-line'}`}>
+                        <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 bg-sand rounded-t-2xl border-b border-line-soft">
+                          <span className="text-base font-bold text-ink">{labelFor(o.key)}</span>
+                          <span className="text-[15px] text-ink-2">
+                            Abholung <b>{fmtDayTime(o.pickupTime, new Date())} Uhr</b> · {fmtKg(o.donations.reduce((s, d) => s + weightKg(d), 0))} · {fmtPallets(o.donations.reduce((s, d) => s + d.numberOfPallets, 0))}
                           </span>
                         </div>
                         {o.overlapWarning && (
-                          <p className="px-3 py-1.5 text-[11px] text-amber-800 bg-amber-50 border-b border-amber-200">
-                            Die Abholfenster dieser Spenden überschneiden sich nicht. Bitte Termin mit der Filiale abstimmen.
+                          <p className={`px-4 py-2.5 text-[15px] ${TONE.orange}`}>
+                            Die Abholzeiten dieser Spenden überschneiden sich nicht. Bitte den Termin mit dem Spender absprechen.
                           </p>
                         )}
-                        <ul className="divide-y divide-slate-100">
-                          {o.donations.map((d) => (
-                            <li key={d.id} className="px-3 py-2 flex flex-col md:flex-row md:items-center gap-2">
-                              <div className="flex-1 min-w-0">
-                                <div className="text-xs"><b>{d.productName}</b> <span className="text-slate-500">· {categoryLabel(d.category)} · {tempLabel(d.temperatureRange)}</span></div>
-                                <div className="font-mono text-[11px] text-slate-500">{weightKg(d)} kg ({d.numberOfPallets} Pal) · {fmtDateTime(d.overlapStart)} – {fmtDateTime(d.overlapEnd)}</div>
-                              </div>
-                              {rowSelect(d)}
-                            </li>
-                          ))}
-                        </ul>
+                        <ul className="divide-y divide-line-soft">{o.donations.map(row)}</ul>
                       </div>
                     ))}
                     {skipped.length > 0 && (
-                      <div className="border border-dashed border-slate-300 rounded-md">
-                        <div className="px-3 py-2 text-xs font-bold text-slate-500 bg-slate-50 border-b border-slate-200">Nicht in diesem Lauf (bleibt reserviert)</div>
-                        <ul className="divide-y divide-slate-100">
-                          {skipped.map((d) => (
-                            <li key={d.id} className="px-3 py-2 flex flex-col md:flex-row md:items-center gap-2">
-                              <div className="flex-1 text-xs"><b>{d.productName}</b> <span className="text-slate-500">· {weightKg(d)} kg · {fmtDateTime(d.overlapStart)} – {fmtDateTime(d.overlapEnd)}</span></div>
-                              {rowSelect(d)}
-                            </li>
-                          ))}
-                        </ul>
+                      <div className="rounded-2xl border border-dashed border-control">
+                        <div className="px-4 py-3 text-base font-semibold text-muted border-b border-line-soft">Zurückgestellt (bleibt reserviert)</div>
+                        <ul className="divide-y divide-line-soft">{skipped.map(row)}</ul>
                       </div>
                     )}
                   </section>
@@ -171,13 +170,14 @@ export function BundleButton() {
               })}
             </div>
 
-            <footer className="px-4 md:px-5 py-3 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3">
-              <span className="font-mono text-[11px] text-slate-600">
-                {totals.orders} Auftrag/Aufträge · {totals.positions} Spende(n){totals.skipped > 0 ? ` · ${totals.skipped} zurückgestellt` : ''}
+            <footer className="px-5 md:px-7 py-4 border-t border-line-soft flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+              <span className="text-[15px] text-muted">
+                {fmtCount(totals.orders, 'Fahrt', 'Fahrten')} · {fmtCount(totals.positions, 'Spende', 'Spenden')}
+                {totals.skipped > 0 ? ` · ${totals.skipped} zurückgestellt` : ''}
               </span>
-              <div className="flex gap-2">
-                <button type="button" className={btnGhost} onClick={close} disabled={pending}>Abbrechen</button>
-                <button type="button" className={btnPrimary} onClick={confirm} disabled={pending || totals.orders === 0}>
+              <div className="flex gap-2.5">
+                <button type="button" className={btn('ghost')} onClick={close} disabled={pending}>Abbrechen</button>
+                <button type="button" className={`${btn('primary')} flex-1 md:flex-none`} onClick={confirm} disabled={pending || totals.orders === 0}>
                   {pending ? 'Wird gespeichert…' : 'Aufträge erstellen'}
                 </button>
               </div>
