@@ -63,6 +63,7 @@ Wirkungsbilanz unter „Logistik-Netzwerk“.
 | 7 Pflichtfelder pro Spende + Warengruppe | `lib/services.ts` (`createDonation`), Formular `components/DonationForm.tsx`; Kategorien in `lib/domain.ts` |
 | Reservierungsfrist | `claimDeadline` in `lib/domain.ts`: 4 Tage nach Erfassung oder Ende des Abholfensters, je nachdem was früher kommt. Lesen: `fetchAvailableDonations`; Schreiben: Prüfung in `claimDonation`. Die Abgabestelle sieht einen Live-Countdown (`components/ClaimCountdown.tsx`) |
 | Teilreservierungen | Eine Abgabestelle reserviert einzelne Paletten (`Claim.pallets`), der Rest bleibt für andere verfügbar. `Donation.claimedPallets` wird mit optimistischer Sperre erhöht; die Datenbank verbietet per CHECK-Constraint, mehr zu reservieren als angeboten. Bei vollständiger Reservierung wird das Angebot `CLAIMED` («Vollständig reserviert») |
+| Gewicht pro Palette | Paletten eines Angebots dürfen unterschiedlich schwer sein (`Donation.palletWeights`, ein Wert pro Palette; Schalter «Paletten wiegen unterschiedlich» im Formular). Abgabestellen wählen dann einzelne Paletten aus (`Claim.palletNumbers`); bei gleichem Gewicht genügt die Anzahl. Das reservierte Gewicht steht fest in `Claim.weightKg` und geht so an Galliker (`palletWeightsKg`, Format 1.1) |
 | Galliker-Bündelung | Algorithmus in `lib/logistics.ts` (Sortierung nach Fensterende, `start <= bundleEnd`). Gebündelt werden Reservierungen, pro Spender und Abholadresse; Persistenz in `createTransportOrders` |
 | Abholfenster | Ein Auftrag trägt das gemeinsame Zeitfenster aller Reservierungen (`pickupStart`–`pickupEnd`, `bundleWindow`) statt einer festen Uhrzeit. Verpasste Fenster werden markiert |
 | Übergabe an Galliker | `lib/galliker.ts`: Neue Aufträge werden automatisch als JSON übermittelt, jeder Versuch in `GallikerTransmission` protokolliert, fehlgeschlagene können erneut gesendet werden. Standard ist die Testverbindung (`GALLIKER_MODE=sandbox`); mit `GALLIKER_MODE=http` geht dasselbe JSON an `GALLIKER_API_URL/transport-orders` |
@@ -71,10 +72,10 @@ Wirkungsbilanz unter „Logistik-Netzwerk“.
 | Fehlermeldungen | `lib/errors.ts` erkennt Datenbankausfälle (Prisma P1xxx) und Netzwerkfehler; Aktionen liefern klare Meldungen, Seiten zeigen `app/error.tsx` bzw. `app/not-found.tsx` |
 | Spender-Dashboard | `lib/dashboard.ts` fasst nächste Abholung, ablaufende Angebote, MHD-Warnungen und Wirkung zusammen (reine Funktionen, unit-getestet) |
 | Angebots-Status | `donationState()` leitet aus Status, Reservierungen und Frist die Anzeige ab (Offen, Teilweise reserviert, Vollständig reserviert, Abholung geplant, Abgeholt, Abgelaufen, Zurückgezogen) |
-| Zurückziehen | `withdrawDonation` zieht nur nicht reservierte Paletten zurück: ohne Reservierungen wird das Angebot `WITHDRAWN`, sonst schrumpft es auf die reservierte Menge |
+| Zurückziehen | `withdrawDonation` zieht nur nicht reservierte Paletten zurück: ohne Reservierungen wird das Angebot `WITHDRAWN`, sonst schrumpft es auf die reservierten Paletten (mit ihren Gewichten, neu nummeriert) |
 | Rollenrechte | Jede Service-Funktion prüft die Rolle; Seiten leiten fremde Rollen um (`lib/auth.ts`) |
 | Spender-Verifizierung | `registerDonor` legt Konten als `PENDING` an; `reviewDonor` (nur FOODBANK) setzt `APPROVED`/`REJECTED`; `createDonation` verlangt `APPROVED`; `requireProfile` leitet Unverifizierte nach `/pending` |
-| Wirkungsbilanz | `lib/impact.ts`: zählt nur tatsächlich reservierte Paletten (Paletten × Gewicht), 2 Mahlzeiten/kg, 1.1 kg CO₂e/kg |
+| Wirkungsbilanz | `lib/impact.ts`: zählt nur tatsächlich reservierte Paletten (Summe ihrer Gewichte), 2 Mahlzeiten/kg |
 
 ## Skripte
 
@@ -114,10 +115,9 @@ app/
     foodbank/          Abgabestellen-Dashboard (verfügbare Spenden, Reservierungen)
     dispatcher/        Disponenten-Ansicht (Bündelung, Transportaufträge, Status)
     network/           Logistik-Netzwerk und globale Wirkungsbilanz
-    wishlist/          Bedarfsanforderungen
 components/            UI-Bausteine und Client-Komponenten (Formulare, Buttons)
 lib/
-  actions.ts           Server Actions (Login, Spende, Claim, Bündelung, Status, Bedarf)
+  actions.ts           Server Actions (Login, Spende, Claim, Bündelung, Status)
   services.ts          Geschäftslogik mit Transaktionen
   queries.ts           Lesezugriffe für Server Components
   session.ts, auth.ts  Sessions und Rollenprüfung

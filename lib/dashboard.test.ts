@@ -8,9 +8,14 @@ const ago = (ms: number) => new Date(NOW.getTime() - ms);
 const later = (ms: number) => new Date(NOW.getTime() + ms);
 const inDays = (n: number) => new Date(NOW.getTime() + n * DAY).toISOString().slice(0, 10);
 
-const claim = (over: Partial<DashboardClaim> = {}): DashboardClaim => ({
-  pallets: 1, status: 'RESERVED', claimedAt: NOW, foodbank: { organizationName: 'Tafel Zürich' }, transportOrder: null, ...over,
-});
+/** A reservation; pallets weigh 100 kg each unless weightKg is given. */
+const claim = (over: Partial<DashboardClaim> = {}): DashboardClaim => {
+  const pallets = over.pallets ?? 1;
+  return {
+    pallets, palletNumbers: Array.from({ length: pallets }, (_, i) => i + 1), weightKg: pallets * 100,
+    status: 'RESERVED', claimedAt: NOW, foodbank: { organizationName: 'Tafel Zürich' }, transportOrder: null, ...over,
+  };
+};
 
 let seq = 0;
 /** An offer; claimedPallets follows the claims unless given. */
@@ -21,7 +26,7 @@ const donation = (over: Partial<DashboardDonation> = {}): DashboardDonation => {
   return {
     id: ++seq, productName: `P${seq}`, category: 'FRUIT_VEG',
     status: claimedPallets >= numberOfPallets ? 'CLAIMED' : 'AVAILABLE',
-    weightPerPallet: 100, bestBeforeDate: inDays(10), createdAt: NOW, overlapEnd: later(2 * DAY),
+    palletWeights: Array.from({ length: numberOfPallets }, () => 100), bestBeforeDate: inDays(10), createdAt: NOW, overlapEnd: later(2 * DAY),
     ...over, numberOfPallets, claimedPallets, claims,
   };
 };
@@ -114,8 +119,8 @@ describe('buildDonorDashboard', () => {
     const laterOrder = { id: 2, pickupStart: later(3 * DAY), pickupEnd: later(3 * DAY + HOUR), status: 'PENDING' };
     const done = { id: 3, pickupStart: ago(DAY), pickupEnd: ago(DAY - HOUR), status: 'COMPLETED' };
     const board = buildDonorDashboard([
-      donation({ productName: 'Milch', numberOfPallets: 5, weightPerPallet: 50, claims: [claim({ pallets: 2, status: 'BUNDLED', transportOrder: soon })] }),
-      donation({ productName: 'Brot', weightPerPallet: 30, claims: [claim({ status: 'BUNDLED', transportOrder: soon })] }),
+      donation({ productName: 'Milch', numberOfPallets: 5, claims: [claim({ pallets: 2, weightKg: 100, status: 'BUNDLED', transportOrder: soon })] }),
+      donation({ productName: 'Brot', claims: [claim({ weightKg: 30, status: 'BUNDLED', transportOrder: soon })] }),
       donation({ claims: [claim({ status: 'BUNDLED', transportOrder: laterOrder })] }),
       donation({ claims: [claim({ status: 'COMPLETED', transportOrder: done })] }),
     ], NOW);
@@ -152,7 +157,7 @@ describe('buildDonorDashboard', () => {
 
   it('ranks categories by reserved weight and lists every recipient once', () => {
     const board = buildDonorDashboard([
-      donation({ category: 'BAKERY', numberOfPallets: 5, weightPerPallet: 500, claims: [claim({ pallets: 1 })] }),
+      donation({ category: 'BAKERY', numberOfPallets: 5, claims: [claim({ pallets: 1, weightKg: 500 })] }),
       donation({ category: 'FRUIT_VEG', claims: [claim()] }),
       donation({ category: 'BAKERY', numberOfPallets: 2, claims: [claim({ foodbank: { organizationName: 'Tafel Bern' } }), claim()] }),
     ], NOW);

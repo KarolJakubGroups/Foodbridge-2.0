@@ -19,7 +19,7 @@ interface DisplayOrder {
   window: PickupWindow;
 }
 
-const kgOf = (c: PlannedClaim) => c.pallets * c.weightPerPallet;
+const kgOf = (c: PlannedClaim) => c.weightKg;
 
 function buildOrders(group: PlannedGroup, assignment: Assignment, keys: string[]): DisplayOrder[] {
   const all = group.orders.flatMap((o) => o.claims);

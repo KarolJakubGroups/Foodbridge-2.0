@@ -6,11 +6,14 @@ import { addPallets, createDonation } from '@/lib/actions';
 import { callAction } from '@/lib/call-action';
 import type { Category, DonationInput, DonationPrefill, OpenDonation } from '@/lib/types';
 import {
-  CATEGORIES_OPTIONS, TEMPERATURES, categoryLabel, fmtBestBefore, fmtDate, fmtDayTime, fmtKg, fmtPallets, fmtTime, isTemperaturePreset,
+  CATEGORIES_OPTIONS, TEMPERATURES, categoryLabel, fmtBestBefore, fmtDate, fmtDayTime, fmtKg, fmtPalletLoad, fmtPallets, fmtTime, isTemperaturePreset,
 } from '@/lib/format';
-import { FRESHNESS_DAYS, MAX_PALLETS, MAX_TEMPERATURE_LENGTH, MAX_WEIGHT_PER_PALLET, normalizeProductName } from '@/lib/domain';
+import { FRESHNESS_DAYS, MAX_TEMPERATURE_LENGTH, normalizeProductName, palletWeightsProblem, totalWeightKg } from '@/lib/domain';
 import { Alert, Field, Pill, TempPill, btn, chipCls, inputCls, linkCls } from '@/components/ui';
-import { CheckIcon, InfoIcon, MapPinIcon, MinusIcon, PlusIcon } from '@/components/icons';
+import { CheckIcon, InfoIcon, MapPinIcon } from '@/components/icons';
+import {
+  PalletWeightsInput, initialPalletWeights, palletWeightValues, type PalletWeightsState,
+} from '@/components/PalletWeightsInput';
 
 const FORM_ID = 'donation-form';
 const OTHER_TEMPERATURE = '__other__';
@@ -61,7 +64,7 @@ function Existing({ d }: { d: OpenDonation }) {
   const now = new Date();
   return (
     <span>
-      {fmtPallets(d.numberOfPallets)} à {fmtKg(d.weightPerPallet)}, haltbar bis {fmtDate(d.bestBeforeDate)},
+      {fmtPalletLoad(d.palletWeights)}, haltbar bis {fmtDate(d.bestBeforeDate)},
       Abholung ab {fmtDayTime(d.overlapStart, now)} Uhr, sichtbar bis {fmtDayTime(visibleUntil(d.createdAt), now)} Uhr.
     </span>
   );
@@ -76,12 +79,11 @@ export function DonationForm({ defaultAddress, organizationName, openDonations, 
     temperatureRange: prefill?.temperatureRange ?? '',
     bestBeforeDate: '',
     pickupAddress: defaultAddress,
-    numberOfPallets: String(prefill?.numberOfPallets ?? 1),
-    weightPerPallet: prefill ? String(prefill.weightPerPallet) : '',
     ...defaultWindow(),
   });
   // Rendered client-side only (see DonationFormLoader), so browser-local defaults are safe here.
   const [form, setForm] = useState(initial);
+  const [palletState, setPalletState] = useState<PalletWeightsState>(() => initialPalletWeights(prefill?.palletWeights));
   const [customTemperature, setCustomTemperature] = useState(() => Boolean(prefill && !isTemperaturePreset(prefill.temperatureRange)));
   const [editAddress, setEditAddress] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -96,7 +98,8 @@ export function DonationForm({ defaultAddress, organizationName, openDonations, 
   const setValue = (key: Key, value: string) => setForm((f) => ({ ...f, [key]: value }));
   const set = (key: Key) => (e: { target: { value: string } }) => setValue(key, e.target.value);
   const reset = () => {
-    setForm({ ...initial(), productName: '', category: '', temperatureRange: '', numberOfPallets: '1', weightPerPallet: '' });
+    setForm({ ...initial(), productName: '', category: '', temperatureRange: '' });
+    setPalletState(initialPalletWeights());
     setCustomTemperature(false); setEditAddress(false); setDone(null); setError(null);
   };
   const scrollUp = () => topRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -109,20 +112,24 @@ export function DonationForm({ defaultAddress, organizationName, openDonations, 
   }, [form.productName, openDonations]);
   const suggestion = mergeTarget || !match || dismissed.includes(match.id) ? null : match;
 
-  const pallets = Number(form.numberOfPallets) || 0;
-  const perPallet = Number(form.weightPerPallet) || 0;
-  const stepPallets = (delta: number) => setValue('numberOfPallets', String(Math.min(MAX_PALLETS, Math.max(1, pallets + delta))));
-  /** The entered weight differs from the existing offer: merging would use the existing one. */
-  const weightDiffers = (target: OpenDonation) => perPallet > 0 && perPallet !== target.weightPerPallet;
+  const palletWeights = palletWeightValues(palletState);
+  const pallets = palletWeights.length;
+  const totalKg = totalWeightKg({ palletWeights });
+  /** Checked before sending, so the donor sees which pallet lacks a weight. */
+  const weightProblem = () => {
+    const problem = palletWeightsProblem(palletWeights);
+    if (problem) { setError(problem); scrollUp(); }
+    return problem !== null;
+  };
 
-  const doMerge = (target: OpenDonation, count: number) => {
+  const doMerge = (target: OpenDonation, weights: number[]) => {
     setError(null);
     startTransition(async () => {
-      const result = await callAction(() => addPallets(target.id, count));
+      const result = await callAction(() => addPallets(target.id, weights));
       if (result.ok) {
         const d = result.data!;
         setMergeTarget(null);
-        setDone(`${fmtPallets(count)} zu «${d.productName}» hinzugefügt. Das Angebot umfasst jetzt ${fmtPallets(d.numberOfPallets)} (${fmtKg(d.totalWeightKg)}).`);
+        setDone(`${fmtPallets(weights.length)} zu «${d.productName}» hinzugefügt. Das Angebot umfasst jetzt ${fmtPallets(d.numberOfPallets)} (${fmtKg(d.totalWeightKg)}).`);
       } else {
         setError(result.error);
       }
@@ -137,8 +144,7 @@ export function DonationForm({ defaultAddress, organizationName, openDonations, 
       temperatureRange: form.temperatureRange,
       bestBeforeDate: form.bestBeforeDate,
       pickupAddress: form.pickupAddress,
-      numberOfPallets: pallets,
-      weightPerPallet: perPallet,
+      palletWeights,
       overlapStart: new Date(form.overlapStart).toISOString(),
       overlapEnd: new Date(form.overlapEnd).toISOString(),
     };
@@ -153,7 +159,8 @@ export function DonationForm({ defaultAddress, organizationName, openDonations, 
   const submit = (e: FormEvent) => {
     e.preventDefault();
     setError(null);
-    if (mergeTarget) return doMerge(mergeTarget, pallets);
+    if (weightProblem()) return;
+    if (mergeTarget) return doMerge(mergeTarget, palletWeights);
     if (!form.category) { scrollUp(); return setError('Bitte wählen Sie eine Warengruppe.'); }
     if (!form.temperatureRange.trim()) { scrollUp(); return setError('Bitte geben Sie an, wie die Ware gelagert werden muss.'); }
     if (form.overlapEnd <= form.overlapStart) { scrollUp(); return setError('Das Ende der Abholzeit muss nach dem Beginn liegen.'); }
@@ -180,6 +187,7 @@ export function DonationForm({ defaultAddress, organizationName, openDonations, 
   // ------------------------------------------------- add to an existing offer
   if (mergeTarget) {
     const total = mergeTarget.numberOfPallets + pallets;
+    const totalAfterKg = totalWeightKg(mergeTarget) + totalKg;
     return (
       <div ref={topRef} className="scroll-mt-24 max-w-2xl space-y-4">
         {error && <Alert onClose={() => setError(null)}>{error}</Alert>}
@@ -188,14 +196,13 @@ export function DonationForm({ defaultAddress, organizationName, openDonations, 
             <h2 className="text-xl md:text-[22px] font-bold text-ink">Paletten zu «{mergeTarget.productName}» hinzufügen</h2>
             <p className="text-base text-muted"><Existing d={mergeTarget} /></p>
           </div>
-          <Field label="Wie viele Paletten kommen dazu?"
-            hint={`Sie werden mit ${fmtKg(mergeTarget.weightPerPallet)} pro Palette und der bestehenden Abholzeit übernommen.`}>
-            <input type="number" inputMode="numeric" min={1} max={MAX_PALLETS} step={1} className={`${inputCls} max-w-40`}
-              value={form.numberOfPallets} onChange={set('numberOfPallets')} required autoFocus />
-          </Field>
+          <div className="@container flex flex-col gap-2">
+            <PalletWeightsInput value={palletState} onChange={setPalletState} countLabel="Wie viele Paletten kommen dazu?" idPrefix="merge" />
+            <span className="text-sm text-muted">Die neuen Paletten übernehmen die bestehende Abholzeit.</span>
+          </div>
           {pallets > 0 && (
             <p className="rounded-xl bg-sand px-4 py-3 text-base text-ink-2">
-              Danach: <b className="text-ink">{fmtPallets(total)} · {fmtKg(total * mergeTarget.weightPerPallet)}</b>
+              Danach: <b className="text-ink">{fmtPallets(total)} · {fmtKg(totalAfterKg)}</b>
             </p>
           )}
           <div className="flex flex-wrap gap-3">
@@ -281,34 +288,7 @@ export function DonationForm({ defaultAddress, organizationName, openDonations, 
           </Step>
 
           <Step n={2} title="Wie viel ist es?">
-            <div className="flex flex-wrap items-end gap-4 md:gap-5">
-              <div className="flex flex-col gap-2">
-                <label htmlFor="pallets" className="text-base font-semibold text-ink">Anzahl Paletten</label>
-                <div className="flex items-center h-12 rounded-xl border border-control overflow-hidden bg-white">
-                  <button type="button" aria-label="Eine Palette weniger" onClick={() => stepPallets(-1)} disabled={pallets <= 1}
-                    className="flex size-12 items-center justify-center bg-sand text-ink hover:bg-line-soft disabled:opacity-40">
-                    <MinusIcon className="size-5" />
-                  </button>
-                  <input id="pallets" type="number" inputMode="numeric" min={1} max={MAX_PALLETS} step={1} required
-                    value={form.numberOfPallets} onChange={set('numberOfPallets')}
-                    className="w-16 h-full text-center text-lg font-bold text-ink focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none" />
-                  <button type="button" aria-label="Eine Palette mehr" onClick={() => stepPallets(1)} disabled={pallets >= MAX_PALLETS}
-                    className="flex size-12 items-center justify-center bg-sand text-ink hover:bg-line-soft disabled:opacity-40">
-                    <PlusIcon className="size-5" />
-                  </button>
-                </div>
-              </div>
-              <Field label="Gewicht pro Palette" className="w-44">
-                <span className="relative">
-                  <input type="number" inputMode="decimal" min={0.1} max={MAX_WEIGHT_PER_PALLET} step={0.1} required
-                    className={`${inputCls} pr-12`} value={form.weightPerPallet} onChange={set('weightPerPallet')} placeholder="z. B. 250" />
-                  <span className="pointer-events-none absolute right-4 top-3 text-base text-muted">kg</span>
-                </span>
-              </Field>
-              <div className="h-12 flex items-center rounded-xl bg-sand px-5 text-[17px] text-ink-2" aria-live="polite">
-                Total&nbsp;<b className="text-ink">{fmtKg(pallets * perPallet)}</b>
-              </div>
-            </div>
+            <PalletWeightsInput value={palletState} onChange={setPalletState} />
           </Step>
 
           <Step n={3} title="Haltbarkeit und Abholung">
@@ -367,7 +347,7 @@ export function DonationForm({ defaultAddress, organizationName, openDonations, 
             </span>
             <span className="text-[15px] text-muted">{organizationName}</span>
             <div className="flex items-baseline gap-2.5">
-              <span className="font-display text-[32px] font-bold text-ink tabular-nums">{fmtKg(pallets * perPallet)}</span>
+              <span className="font-display text-[32px] font-bold text-ink tabular-nums">{fmtKg(totalKg)}</span>
               <span className="text-base text-muted">{fmtPallets(pallets)}</span>
             </div>
             <div className="flex flex-col gap-1.5 text-[15px] text-ink-2">
@@ -392,15 +372,9 @@ export function DonationForm({ defaultAddress, organizationName, openDonations, 
             <p className="text-base text-ink-2 leading-relaxed">
               Sollen die {fmtPallets(pallets)} zum bestehenden Angebot dazukommen? Aktuell: <Existing d={confirmMatch} />
             </p>
-            {weightDiffers(confirmMatch) && (
-              <p className="rounded-xl bg-[#fdf1e3] text-[#3f2a0c] px-4 py-3 text-[15px]">
-                Sie haben {fmtKg(perPallet)} pro Palette angegeben, das bestehende Angebot hat {fmtKg(confirmMatch.weightPerPallet)}.
-                Beim Hinzufügen gilt das bestehende Gewicht. Bei anderem Gewicht bitte als neues Angebot melden.
-              </p>
-            )}
             <div className="flex flex-col gap-2.5 pt-1">
               <button type="button" className={btn('primary')} disabled={pending}
-                onClick={() => { const t = confirmMatch; setConfirmMatch(null); doMerge(t, pallets); }}>
+                onClick={() => { const t = confirmMatch; setConfirmMatch(null); doMerge(t, palletWeights); }}>
                 Zum bestehenden Angebot hinzufügen
               </button>
               <button type="button" className={btn('ghost')} disabled={pending}

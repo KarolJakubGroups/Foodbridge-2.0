@@ -1,12 +1,12 @@
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { requireRole } from '@/lib/auth';
-import { fetchMyDonations, fetchWishlists } from '@/lib/queries';
+import { fetchMyDonations } from '@/lib/queries';
 import { buildDonorDashboard } from '@/lib/dashboard';
 import {
   CATEGORY_LABEL, fmtBestBefore, fmtCount, fmtDayTime, fmtKg, fmtLongDate, fmtMonth, fmtNumber, fmtPallets, fmtWindow, greeting,
 } from '@/lib/format';
-import { claimDeadline, remainingPallets, type Category } from '@/lib/domain';
+import { claimDeadline, freePalletNumbers, remainingPallets, weightOfPallets, type Category } from '@/lib/domain';
 import { Card, PageHeader, Pill, SectionTitle, Stat, TONE, btn, linkCls, type Tone } from '@/components/ui';
 import { AlertIcon, ClockIcon, PlusIcon, TruckIcon } from '@/components/icons';
 import { DonationList } from '@/components/DonationList';
@@ -33,13 +33,12 @@ function ActionCard({ tone, icon, label, title, children, footer }: {
 
 export default async function DonorPage() {
   const profile = await requireRole('DONOR');
-  const [donations, wishlists] = await Promise.all([fetchMyDonations(profile.id), fetchWishlists()]);
+  const donations = await fetchMyDonations(profile.id);
   const now = new Date();
   const { nextPickup, expiringSoon, bestBeforeSoon, expired, impact, counts, topCategories, recipients } = buildDonorDashboard(donations, now);
 
   const running = counts.OPEN + counts.PARTIAL + counts.RESERVED + counts.SCHEDULED;
   const hasActions = Boolean(nextPickup) || expiringSoon.length > 0 || bestBeforeSoon.length > 0 || expired.length > 0;
-  const needs = wishlists.slice(0, 4);
   const firstExpiring = expiringSoon.reduce<Date | null>((min, d) => {
     const until = claimDeadline(d);
     return !min || until < min ? until : min;
@@ -97,7 +96,7 @@ export default async function DonorPage() {
                     const left = remainingPallets(d);
                     return (
                       <li key={d.id} className="flex flex-wrap items-center justify-between gap-2">
-                        <span>{expired.length > 1 && <b>{d.productName}: </b>}{fmtPallets(left)} übrig · {fmtKg(left * d.weightPerPallet)}</span>
+                        <span>{expired.length > 1 && <b>{d.productName}: </b>}{fmtPallets(left)} übrig · {fmtKg(weightOfPallets(d.palletWeights, freePalletNumbers(d)))}</span>
                         <WithdrawButton donationId={d.id} productName={d.productName} remainder={d.claimedPallets > 0 ? left : undefined} />
                       </li>
                     );
@@ -126,10 +125,7 @@ export default async function DonorPage() {
                   </Pill>
                 )}
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <Stat label="Mahlzeiten" value={`≈ ${fmtNumber(impact.thisMonth.meals, 0)}`} />
-                <Stat label="kg CO₂ eingespart" value={fmtNumber(impact.thisMonth.co2SavedKg, 0)} />
-              </div>
+              <Stat label="Mahlzeiten" value={`≈ ${fmtNumber(impact.thisMonth.meals, 0)}`} />
               <p className="text-[15px] text-muted">Seit Beginn: {fmtKg(impact.total.totalWeightKg)} gerettet, ≈ {fmtNumber(impact.total.meals, 0)} Mahlzeiten.</p>
               {(recipients.length > 0 || topCategories.length > 0) && (
                 <div className="space-y-3 border-t border-line-soft pt-4">
@@ -150,23 +146,6 @@ export default async function DonorPage() {
               <PrintButton label="Spendennachweis drucken" />
             </div>
           </Card>
-
-          {needs.length > 0 && (
-            <Card title="Das wird gerade gesucht" subtitle="Haben Sie etwas davon übrig?" className="no-print">
-              <ul className="divide-y divide-line-soft -my-2">
-                {needs.map((w) => (
-                  <li key={w.id} className="py-3 flex items-baseline justify-between gap-3">
-                    <span className="min-w-0">
-                      <span className="block text-base font-semibold text-ink truncate">{w.productName}</span>
-                      <span className="block text-sm text-muted truncate">{w.foodbank.organizationName}</span>
-                    </span>
-                    <span className="text-[15px] text-muted tabular-nums whitespace-nowrap">{fmtKg(w.quantityKg)}</span>
-                  </li>
-                ))}
-              </ul>
-              <Link href="/wishlist" className={`${linkCls} inline-block mt-4`}>Alle gesuchten Produkte</Link>
-            </Card>
-          )}
         </aside>
       </div>
     </div>

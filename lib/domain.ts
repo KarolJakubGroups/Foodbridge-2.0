@@ -120,6 +120,31 @@ export function normalizeProductName(name: string): string {
   return (name ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
-export function weightKg(d: { numberOfPallets: number; weightPerPallet: number }): number {
-  return d.numberOfPallets * d.weightPerPallet;
+/** Total weight of an offer: the sum of its pallets. */
+export function totalWeightKg(d: { palletWeights: readonly number[] }): number {
+  return d.palletWeights.reduce((sum, w) => sum + w, 0);
+}
+
+/** Weight of some pallets of an offer, by their 1-based numbers. */
+export function weightOfPallets(palletWeights: readonly number[], numbers: readonly number[]): number {
+  return numbers.reduce((sum, n) => sum + (palletWeights[n - 1] ?? 0), 0);
+}
+
+/** Pallet numbers (1-based) nobody has reserved yet, in order. */
+export function freePalletNumbers(d: { palletWeights: readonly number[]; claims: readonly { palletNumbers: readonly number[] }[] }): number[] {
+  const taken = new Set(d.claims.flatMap((c) => c.palletNumbers));
+  return d.palletWeights.map((_, i) => i + 1).filter((n) => !taken.has(n));
+}
+
+/** The weight every pallet shares, or null when they differ. */
+export function uniformWeight(weights: readonly number[]): number | null {
+  return weights.length > 0 && weights.every((w) => w === weights[0]) ? weights[0] : null;
+}
+
+/** Problem with a list of pallet weights as entered, or null when valid. */
+export function palletWeightsProblem(weights: readonly number[]): string | null {
+  if (weights.length < 1 || weights.length > MAX_PALLETS) return `Ein Angebot umfasst 1 bis ${MAX_PALLETS} Paletten.`;
+  const bad = weights.findIndex((w) => !(typeof w === 'number' && w > 0 && w <= MAX_WEIGHT_PER_PALLET));
+  if (bad >= 0) return `Gewicht von Palette ${bad + 1} fehlt oder ist ungültig (höchstens ${MAX_WEIGHT_PER_PALLET} kg).`;
+  return null;
 }

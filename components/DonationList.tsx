@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import type { DonorDonation } from '@/lib/types';
-import { STATE_LABEL, categoryLabel, fmtBestBefore, fmtDayTime, fmtKg, fmtPallets, fmtWindow, tempShort } from '@/lib/format';
+import { STATE_LABEL, categoryLabel, fmtBestBefore, fmtDayTime, fmtPalletLoad, fmtPallets, fmtWindow, tempShort } from '@/lib/format';
 import { claimDeadline, donationState, remainingPallets, type DonationState } from '@/lib/domain';
 import { EmptyState, PalletBar, StateBadge, StateProgress, inputCls } from '@/components/ui';
 import { PackageIcon, SearchIcon } from '@/components/icons';
@@ -125,7 +125,7 @@ export function DonationList({ donations, now: nowIso }: { donations: DonorDonat
                 <div className="flex flex-col gap-1 min-w-0 @md:col-span-2 @3xl:col-span-1">
                   <span className="text-[17px] font-semibold text-ink">{d.productName}</span>
                   <span className="text-[15px] text-muted">
-                    {categoryLabel(d.category)} · {tempShort(d.temperatureRange)} · {fmtPallets(d.numberOfPallets)} · {fmtKg(d.numberOfPallets * d.weightPerPallet)}
+                    {categoryLabel(d.category)} · {tempShort(d.temperatureRange)} · {fmtPalletLoad(d.palletWeights)}
                   </span>
                   {d.claimedPallets > 0 && state !== 'WITHDRAWN' && (
                     <div className="flex flex-col gap-1 max-w-xs">

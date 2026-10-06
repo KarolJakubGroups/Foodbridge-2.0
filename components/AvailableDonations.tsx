@@ -3,9 +3,9 @@
 import { useMemo, useState, useTransition } from 'react';
 import { claimDonation } from '@/lib/actions';
 import { callAction } from '@/lib/call-action';
-import type { DonationWithDonor } from '@/lib/types';
+import type { AvailableDonation } from '@/lib/types';
 import { categoryLabel, fmtBestBefore, fmtKg, fmtPallets, fmtWindow, tempShort } from '@/lib/format';
-import { claimDeadline, claimDeadlineReason, remainingPallets } from '@/lib/domain';
+import { claimDeadline, claimDeadlineReason, freePalletNumbers, remainingPallets, uniformWeight, weightOfPallets } from '@/lib/domain';
 import { Alert, EmptyState, PalletBar, Pill, TempPill, btn, chipCls, inputCls } from '@/components/ui';
 import { CalendarIcon, ClockIcon, MapPinIcon, MinusIcon, PlusIcon, SearchIcon } from '@/components/icons';
 import { ClaimCountdown } from '@/components/ClaimCountdown';
@@ -26,7 +26,13 @@ function town(address: string): string {
 }
 
 /** Available weight of what is still free. */
-const freeKg = (d: DonationWithDonor) => remainingPallets(d) * d.weightPerPallet;
+const freeKg = (d: AvailableDonation) => weightOfPallets(d.palletWeights, freePalletNumbers(d));
+/** Free pallets with their weights; `uniform` when they all weigh the same (then only the count matters). */
+function freePallets(d: AvailableDonation) {
+  const numbers = freePalletNumbers(d);
+  const weights = numbers.map((n) => d.palletWeights[n - 1]);
+  return { numbers, weights, uniform: uniformWeight(weights) !== null };
+}
 
 const stepBtn = 'inline-flex size-12 shrink-0 items-center justify-center rounded-xl border border-control bg-white text-ink hover:bg-sand disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-700/25';
 const stepInput = 'h-12 w-16 shrink-0 rounded-xl border border-control bg-white text-center text-lg font-bold tabular-nums text-ink focus:outline-none focus:border-brand-700 focus:ring-4 focus:ring-brand-700/15';
@@ -49,7 +55,7 @@ function PalletStepper({ value, max, onChange, disabled }: { value: number; max:
   );
 }
 
-export function AvailableDonations({ donations, now: nowIso }: { donations: DonationWithDonor[]; now: string }) {
+export function AvailableDonations({ donations, now: nowIso }: { donations: AvailableDonation[]; now: string }) {
   const nowMs = useNow(Date.parse(nowIso));
   const now = useMemo(() => new Date(nowMs), [nowMs]);
   const [query, setQuery] = useState('');
@@ -58,6 +64,8 @@ export function AvailableDonations({ donations, now: nowIso }: { donations: Dona
   const [sort, setSort] = useState<Sort>('deadline');
   const [confirmId, setConfirmId] = useState<number | null>(null);
   const [pallets, setPallets] = useState(1);
+  /** Chosen pallet numbers when the free pallets weigh differently. */
+  const [selected, setSelected] = useState<number[]>([]);
   const [message, setMessage] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -74,7 +82,7 @@ export function AvailableDonations({ donations, now: nowIso }: { donations: Dona
       && (!storage || tempShort(d.temperatureRange) === storage)
       && (!q || d.productName.toLowerCase().includes(q) || d.donor.organizationName.toLowerCase().includes(q)
         || categoryLabel(d.category).toLowerCase().includes(q)));
-    const by: Record<Sort, (a: DonationWithDonor, b: DonationWithDonor) => number> = {
+    const by: Record<Sort, (a: AvailableDonation, b: AvailableDonation) => number> = {
       deadline: (a, b) => claimDeadline(a).getTime() - claimDeadline(b).getTime(),
       bestBefore: (a, b) => a.bestBeforeDate.localeCompare(b.bestBeforeDate),
       newest: (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
@@ -83,16 +91,21 @@ export function AvailableDonations({ donations, now: nowIso }: { donations: Dona
     return [...list].sort(by[sort]);
   }, [donations, query, category, storage, sort]);
 
-  const startConfirm = (d: DonationWithDonor) => {
+  const startConfirm = (d: AvailableDonation) => {
     setMessage(null);
-    setPallets(remainingPallets(d)); // most institutions take everything; they can lower it
+    // Most institutions take everything; they can lower it.
+    setPallets(remainingPallets(d));
+    setSelected(freePalletNumbers(d));
     setConfirmId(d.id);
   };
+  const toggle = (n: number) => setSelected((s) => (s.includes(n) ? s.filter((x) => x !== n) : [...s, n].sort((a, b) => a - b)));
 
-  const claim = (d: DonationWithDonor, count: number) => {
+  /** Same-weight pallets go by count (the server assigns the next free ones); otherwise the chosen pallets. */
+  const claim = (d: AvailableDonation, numbers: number[], byCount: boolean) => {
+    const count = numbers.length;
     setMessage(null);
     startTransition(async () => {
-      const result = await callAction(() => claimDonation(d.id, count));
+      const result = await callAction(() => claimDonation(d.id, byCount ? count : numbers));
       setConfirmId(null);
       if (!result.ok) return setMessage({ kind: 'error', text: result.error });
       const left = result.data!.remainingPallets;
@@ -159,6 +172,9 @@ export function AvailableDonations({ donations, now: nowIso }: { donations: Dona
             const bestBefore = fmtBestBefore(d.bestBeforeDate, now);
             const confirming = confirmId === d.id;
             const left = remainingPallets(d);
+            const free = freePallets(d);
+            // Same weight: the first free pallets. Different weights: the ones ticked.
+            const chosen = free.uniform ? free.numbers.slice(0, Math.min(pallets, left)) : selected.filter((n) => free.numbers.includes(n));
             const deadline = claimDeadline(d);
             const closed = deadline.getTime() <= nowMs;
             return (
@@ -178,6 +194,11 @@ export function AvailableDonations({ donations, now: nowIso }: { donations: Dona
                       {d.claimedPallets > 0 ? `${left} von ${fmtPallets(d.numberOfPallets)} frei` : fmtPallets(d.numberOfPallets)}
                     </span>
                   </div>
+                  {!free.uniform && (
+                    <span className="text-sm text-muted">
+                      Je Palette {free.weights.slice(0, 6).map((w) => fmtKg(w)).join(' · ')}{free.weights.length > 6 ? ' · …' : ''}
+                    </span>
+                  )}
                   {d.claimedPallets > 0 && <PalletBar claimed={d.claimedPallets} total={d.numberOfPallets} />}
                 </div>
                 <div className="flex flex-col gap-1.5 text-[15px] text-ink-2">
@@ -192,17 +213,32 @@ export function AvailableDonations({ donations, now: nowIso }: { donations: Dona
                 <div className="mt-auto pt-1">
                   {confirming && !closed ? (
                     <div className="flex flex-col gap-3">
-                      {left > 1 && (
+                      {left > 1 && free.uniform && (
                         <div className="flex flex-col gap-2">
                           <span className="text-[15px] font-semibold text-ink">Wie viele Paletten brauchen Sie?</span>
                           <PalletStepper value={Math.min(pallets, left)} max={left} onChange={setPallets} disabled={pending} />
                         </div>
                       )}
+                      {left > 1 && !free.uniform && (
+                        <div className="flex flex-col gap-2" role="group" aria-label="Paletten auswählen">
+                          <span className="text-[15px] font-semibold text-ink">Welche Paletten brauchen Sie?</span>
+                          <div className="flex flex-wrap gap-2">
+                            {free.numbers.map((n, i) => (
+                              <button key={n} type="button" aria-pressed={chosen.includes(n)} disabled={pending}
+                                className={chipCls(chosen.includes(n))} onClick={() => toggle(n)}>
+                                Palette {n} · {fmtKg(free.weights[i])}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                       <p className="text-[15px] text-ink-2">
-                        {fmtPallets(Math.min(pallets, left))} ({fmtKg(Math.min(pallets, left) * d.weightPerPallet)}) verbindlich reservieren?
+                        {chosen.length === 0
+                          ? 'Bitte mindestens eine Palette wählen.'
+                          : `${fmtPallets(chosen.length)} (${fmtKg(weightOfPallets(d.palletWeights, chosen))}) verbindlich reservieren?`}
                       </p>
                       <div className="flex gap-2">
-                        <button type="button" className={`${btn('primary')} flex-1`} disabled={pending} onClick={() => claim(d, Math.min(pallets, left))}>
+                        <button type="button" className={`${btn('primary')} flex-1`} disabled={pending || chosen.length === 0} onClick={() => claim(d, chosen, free.uniform)}>
                           {pending ? 'Wird reserviert…' : 'Ja, reservieren'}
                         </button>
                         <button type="button" className={btn('ghost')} disabled={pending} onClick={() => setConfirmId(null)}>Abbrechen</button>

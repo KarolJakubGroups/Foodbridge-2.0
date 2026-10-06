@@ -45,10 +45,9 @@ export default async function NetworkPage() {
 
       <section className="space-y-4">
         <SectionTitle>{copy.impact}</SectionTitle>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
           <Stat className="bg-white border border-line" label="kg Lebensmittel gerettet" value={fmtNumber(impact.totalWeightKg, 0)} />
           <Stat className="bg-white border border-line" label="Mahlzeiten" value={`≈ ${fmtNumber(impact.meals, 0)}`} />
-          <Stat className="bg-white border border-line" label="kg CO₂ eingespart" value={fmtNumber(impact.co2SavedKg, 0)} />
           <Stat className="bg-white border border-line" label="Fahrten geplant oder unterwegs" value={upcoming.length} />
         </div>
       </section>

@@ -12,7 +12,7 @@ const hasDb = Boolean(process.env.TEST_DATABASE_URL);
 import { prisma } from '@/lib/db';
 import * as services from '@/lib/services';
 import { fetchAvailableDonations, fetchGlobalImpact, fetchImpactFor, fetchTransportOrders, orderScopeFor } from '@/lib/queries';
-import { DomainError } from '@/lib/domain';
+import { DomainError, totalWeightKg } from '@/lib/domain';
 import { createPrismaClient } from '@/lib/db';
 import { DB_UNAVAILABLE_DIGEST, DatabaseUnavailableError } from '@/lib/errors';
 import type { Profile } from '@/lib/types';
@@ -30,10 +30,13 @@ let dispatcher: Profile;
 const inDays = (n: number, hour: number) => { const d = new Date(); d.setDate(d.getDate() + n); d.setHours(hour, 0, 0, 0); return d; };
 const bestBefore = new Date(Date.now() + 10 * 86_400_000).toISOString().slice(0, 10);
 
-async function insertDonation(donor: Profile, overrides: Partial<Prisma.DonationUncheckedCreateInput> = {}) {
+/** An offer written directly; every pallet weighs `weightPerPallet` (10 kg) unless palletWeights are given. */
+async function insertDonation(donor: Profile, { weightPerPallet = 10, ...overrides }: Partial<Prisma.DonationUncheckedCreateInput> & { weightPerPallet?: number } = {}) {
+  const numberOfPallets = overrides.numberOfPallets ?? 1;
   const data: Prisma.DonationUncheckedCreateInput = {
       donorId: donor.id, productName: 'Testware', category: 'DRY_GOODS', temperatureRange: 'AMBIENT', bestBeforeDate: bestBefore,
-      pickupAddress: 'Zürich', numberOfPallets: 1, weightPerPallet: 10, overlapStart: inDays(20, 8), overlapEnd: inDays(20, 12),
+      pickupAddress: 'Zürich', numberOfPallets, palletWeights: Array.from({ length: numberOfPallets }, () => weightPerPallet),
+      overlapStart: inDays(20, 8), overlapEnd: inDays(20, 12),
       ...overrides,
   };
   return prisma.donation.create({ data });
@@ -44,7 +47,6 @@ beforeAll(async () => {
   // start from a clean slate in the test schema
   await prisma.claim.deleteMany({});
   await prisma.donation.deleteMany({});
-  await prisma.wishlist.deleteMany({});
   await prisma.gallikerTransmission.deleteMany({});
   await prisma.transportOrder.deleteMany({});
   await prisma.session.deleteMany({});
@@ -87,7 +89,7 @@ describe.skipIf(!hasDb)('donor registration and verification', () => {
     const pendingProfile = profile(user);
     const valid = {
       productName: 'Rüebli', category: 'FRUIT_VEG' as const, temperatureRange: 'CHILLED' as const, bestBeforeDate: bestBefore,
-      pickupAddress: 'Zürich', numberOfPallets: 1, weightPerPallet: 10, overlapStart: inDays(5, 8).toISOString(), overlapEnd: inDays(5, 12).toISOString(),
+      pickupAddress: 'Zürich', palletWeights: [10], overlapStart: inDays(5, 8).toISOString(), overlapEnd: inDays(5, 12).toISOString(),
     };
     await expect(services.createDonation(pendingProfile, valid)).rejects.toThrow(/noch nicht freigegeben/);
 
@@ -107,18 +109,27 @@ describe.skipIf(!hasDb)('donor registration and verification', () => {
 describe.skipIf(!hasDb)('donation capture (FA-01)', () => {
   const valid = {
     productName: 'Rüebli', category: 'FRUIT_VEG' as const, temperatureRange: 'CHILLED' as const, bestBeforeDate: bestBefore, pickupAddress: 'Limmatstrasse 152',
-    numberOfPallets: 2, weightPerPallet: 250.5, overlapStart: inDays(5, 8).toISOString(), overlapEnd: inDays(5, 12).toISOString(),
+    palletWeights: [250.5, 250.5], overlapStart: inDays(5, 8).toISOString(), overlapEnd: inDays(5, 12).toISOString(),
   };
 
   it('stores a donation with all 7 fields as AVAILABLE and nothing reserved', async () => {
     const d = await services.createDonation(migros, valid);
     expect(d.status).toBe('AVAILABLE');
     expect(d.claimedPallets).toBe(0);
-    expect(d.numberOfPallets * d.weightPerPallet).toBe(501);
+    expect(d.numberOfPallets).toBe(2);
+    expect(totalWeightKg(d)).toBe(501);
+  });
+
+  it('stores a different weight for every pallet', async () => {
+    const d = await services.createDonation(migros, { ...valid, palletWeights: [320, 180.5, 95] });
+    expect([d.numberOfPallets, d.palletWeights, totalWeightKg(d)]).toEqual([3, [320, 180.5, 95], 595.5]);
+    await expect(services.createDonation(migros, { ...valid, palletWeights: [320, 0, 95] })).rejects.toThrow(/Palette 2/);
+    await expect(services.createDonation(migros, { ...valid, palletWeights: [320, 1600] })).rejects.toThrow(/Palette 2/);
+    await expect(services.createDonation(migros, { ...valid, palletWeights: [] })).rejects.toThrow(/1 bis 66 Paletten/);
   });
 
   it('rejects missing mandatory fields (TF-02) and windows that are already over', async () => {
-    await expect(services.createDonation(migros, { ...valid, weightPerPallet: 0, pickupAddress: '' })).rejects.toThrow(/Gewicht pro Palette/);
+    await expect(services.createDonation(migros, { ...valid, palletWeights: [0], pickupAddress: '' })).rejects.toThrow(/Gewicht der Paletten/);
     await expect(services.createDonation(migros, { ...valid, overlapEnd: valid.overlapStart })).rejects.toThrow(/Ende/);
     await expect(services.createDonation(migros, { ...valid, overlapStart: inDays(-2, 8).toISOString(), overlapEnd: inDays(-1, 8).toISOString() }))
       .rejects.toThrow(/Vergangenheit/);
@@ -180,7 +191,25 @@ describe.skipIf(!hasDb)('partial reservations', () => {
   it('is guarded by the database: reserved can never exceed offered', async () => {
     const d = await insertDonation(coop, { numberOfPallets: 2 });
     await expect(prisma.donation.update({ where: { id: d.id }, data: { claimedPallets: 3 } })).rejects.toThrow();
-    await expect(prisma.claim.create({ data: { donationId: d.id, foodbankId: foodbank.id, pallets: 0 } })).rejects.toThrow();
+    await expect(prisma.claim.create({ data: { donationId: d.id, foodbankId: foodbank.id, pallets: 0, palletNumbers: [], weightKg: 0 } })).rejects.toThrow();
+    // one weight per pallet, and a claim names exactly its pallets
+    await expect(prisma.donation.update({ where: { id: d.id }, data: { palletWeights: [10] } })).rejects.toThrow();
+    await expect(prisma.claim.create({ data: { donationId: d.id, foodbankId: foodbank.id, pallets: 2, palletNumbers: [1], weightKg: 10 } })).rejects.toThrow();
+  });
+
+  it('lets institutions pick pallets of different weights, or take the next free ones by count', async () => {
+    const d = await insertDonation(coop, { productName: 'Gemischt', numberOfPallets: 4, palletWeights: [300, 120, 80, 250] });
+
+    const picked = await services.claimDonation(foodbank, d.id, [3, 2]);
+    expect(picked).toMatchObject({ remainingPallets: 2, weightKg: 200 });
+    expect(picked.claim.palletNumbers).toEqual([2, 3]);
+    await expect(services.claimDonation(foodbank2, d.id, [2, 4])).rejects.toThrow(/Palette 2 ist nicht mehr frei/);
+    await expect(services.claimDonation(foodbank2, d.id, [1.5])).rejects.toThrow(/mindestens eine Palette/);
+
+    const byCount = await services.claimDonation(foodbank2, d.id, 1);
+    expect([byCount.claim.palletNumbers, byCount.weightKg]).toEqual([[1], 300]);
+    const [listed] = (await fetchAvailableDonations()).filter((x) => x.id === d.id);
+    expect(listed.claims.flatMap((c) => c.palletNumbers).sort()).toEqual([1, 2, 3]);
   });
 
   it('refuses zero or fractional pallets and non-institutions', async () => {
@@ -215,11 +244,12 @@ describe.skipIf(!hasDb)('adding pallets to an existing offer', () => {
     const threeDaysAgo = new Date(Date.now() - 3 * 86_400_000);
     const d = await insertDonation(migros, { productName: 'Milch UHT 1l', numberOfPallets: 2, weightPerPallet: 50, createdAt: threeDaysAgo });
 
-    const result = await services.addPalletsToDonation(migros, d.id, 3);
+    const result = await services.addPalletsToDonation(migros, d.id, [50, 70, 30]);
     expect(result).toEqual({ productName: 'Milch UHT 1l', numberOfPallets: 5, totalWeightKg: 250 });
 
     const after = await prisma.donation.findUniqueOrThrow({ where: { id: d.id } });
     expect(after.numberOfPallets).toBe(5);
+    expect(after.palletWeights).toEqual([50, 50, 50, 70, 30]);
     // registration date must not be reset, otherwise old goods would look fresh again
     expect(after.createdAt.getTime()).toBe(threeDaysAgo.getTime());
     expect(after.status).toBe('AVAILABLE');
@@ -228,19 +258,19 @@ describe.skipIf(!hasDb)('adding pallets to an existing offer', () => {
   it('works on a partly reserved offer and refuses fully reserved, foreign or invalid ones', async () => {
     const partly = await insertDonation(migros, { productName: 'Teilweise', numberOfPallets: 3 });
     await services.claimDonation(foodbank, partly.id, 1);
-    await expect(services.addPalletsToDonation(migros, partly.id, 2)).resolves.toMatchObject({ numberOfPallets: 5 });
+    await expect(services.addPalletsToDonation(migros, partly.id, [10, 10])).resolves.toMatchObject({ numberOfPallets: 5 });
 
     const mine = await insertDonation(migros, { productName: 'Brot' });
     const foreign = await insertDonation(coop, { productName: 'Brot' });
     const full = await insertDonation(migros, { productName: 'Salat' });
     await services.claimDonation(foodbank, full.id, 1);
 
-    await expect(services.addPalletsToDonation(migros, foreign.id, 1)).rejects.toThrow(/nicht gefunden/);
-    await expect(services.addPalletsToDonation(migros, full.id, 1)).rejects.toThrow(/nicht mehr offen/);
-    await expect(services.addPalletsToDonation(migros, mine.id, 0)).rejects.toThrow(/zusätzlicher Paletten/);
-    await expect(services.addPalletsToDonation(migros, mine.id, 66)).rejects.toThrow(/höchstens/);
-    await expect(services.addPalletsToDonation(foodbank, mine.id, 1)).rejects.toThrow(/Nur Spender/);
-    await expect(services.addPalletsToDonation({ ...migros, status: 'PENDING' }, mine.id, 1)).rejects.toThrow(/noch nicht freigegeben/);
+    await expect(services.addPalletsToDonation(migros, foreign.id, [10])).rejects.toThrow(/nicht gefunden/);
+    await expect(services.addPalletsToDonation(migros, full.id, [10])).rejects.toThrow(/nicht mehr offen/);
+    await expect(services.addPalletsToDonation(migros, mine.id, [])).rejects.toThrow(/zusätzlicher Paletten/);
+    await expect(services.addPalletsToDonation(migros, mine.id, Array.from({ length: 66 }, () => 10))).rejects.toThrow(/höchstens/);
+    await expect(services.addPalletsToDonation(foodbank, mine.id, [10])).rejects.toThrow(/Nur Spender/);
+    await expect(services.addPalletsToDonation({ ...migros, status: 'PENDING' }, mine.id, [10])).rejects.toThrow(/noch nicht freigegeben/);
   });
 });
 
@@ -260,6 +290,17 @@ describe.skipIf(!hasDb)('withdrawing an offer', () => {
     const row = await prisma.donation.findUniqueOrThrow({ where: { id: d.id }, include: { claims: true } });
     expect([row.numberOfPallets, row.claimedPallets, row.status, row.claims.length]).toEqual([2, 2, 'CLAIMED', 1]);
     await expect(services.withdrawDonation(migros, d.id)).rejects.toThrow(/bereits reserviert/);
+  });
+
+  it('keeps exactly the reserved pallets with their weights, numbered again', async () => {
+    const d = await insertDonation(migros, { productName: 'Lücken', numberOfPallets: 4, palletWeights: [100, 200, 300, 400] });
+    const a = (await services.claimDonation(foodbank, d.id, [4])).claim;
+    const b = (await services.claimDonation(foodbank2, d.id, [2])).claim;
+    await services.withdrawDonation(migros, d.id);
+    const row = await prisma.donation.findUniqueOrThrow({ where: { id: d.id } });
+    expect([row.numberOfPallets, row.palletWeights]).toEqual([2, [200, 400]]);
+    const claims = await prisma.claim.findMany({ where: { id: { in: [a.id, b.id] } }, orderBy: { id: 'asc' } });
+    expect(claims.map((c) => [c.palletNumbers, c.weightKg])).toEqual([[[2], 400], [[1], 200]]);
   });
 
   it('refuses foreign offers and other roles', async () => {
@@ -430,21 +471,11 @@ describe.skipIf(!hasDb)('impact (FA-04)', () => {
     await services.claimDonation(foodbank, d.id, 2);
     await services.claimDonation(foodbank2, d.id, 1);
 
-    expect(await fetchGlobalImpact()).toEqual({ totalWeightKg: 300, meals: 600, co2SavedKg: 330, donationCount: 2 });
+    expect(await fetchGlobalImpact()).toEqual({ totalWeightKg: 300, meals: 600, donationCount: 2 });
     expect((await fetchImpactFor(migros.id, 'DONOR')).totalWeightKg).toBe(300);
     expect((await fetchImpactFor(foodbank.id, 'FOODBANK')).totalWeightKg).toBe(200);
     expect((await fetchImpactFor(foodbank2.id, 'FOODBANK')).totalWeightKg).toBe(100);
     expect((await fetchImpactFor(coop.id, 'DONOR')).totalWeightKg).toBe(0);
-  });
-});
-
-describe.skipIf(!hasDb)('wishlists', () => {
-  it('are owned by the publishing foodbank', async () => {
-    const w = await services.createWishlist(foodbank, { productName: 'Reis', quantityKg: 50, note: '' });
-    await expect(services.createWishlist(migros, { productName: 'Nope', quantityKg: 1, note: '' })).rejects.toThrow(/Nur Abgabestellen/);
-    await expect(services.deleteWishlist(migros, w.id)).rejects.toThrow(/anderen Institution/);
-    await services.deleteWishlist(foodbank, w.id);
-    expect(await prisma.wishlist.count({ where: { id: w.id } })).toBe(0);
   });
 });
 

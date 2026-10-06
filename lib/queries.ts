@@ -2,7 +2,7 @@ import 'server-only';
 import { prisma } from '@/lib/db';
 import { computeImpact, type ImpactReport } from '@/lib/impact';
 import { freshnessCutoff, type Role } from '@/lib/domain';
-import type { ClaimWithDonation, DonationWithDonor, DonorDonation, TransportOrderWithDetails, WishlistWithFoodbank } from '@/lib/types';
+import type { AvailableDonation, ClaimWithDonation, DonorDonation, TransportOrderWithDetails } from '@/lib/types';
 
 const userSummary = { select: { id: true, username: true, organizationName: true, address: true } } as const;
 const orderWindow = { select: { id: true, pickupStart: true, pickupEnd: true, status: true } } as const;
@@ -14,7 +14,7 @@ export function fetchMyDonations(donorId: string): Promise<DonorDonation[]> {
     include: {
       donor: userSummary,
       claims: {
-        select: { id: true, pallets: true, status: true, claimedAt: true, foodbank: { select: { organizationName: true } }, transportOrder: orderWindow },
+        select: { id: true, pallets: true, palletNumbers: true, weightKg: true, status: true, claimedAt: true, foodbank: { select: { organizationName: true } }, transportOrder: orderWindow },
         orderBy: { claimedAt: 'asc' },
       },
     },
@@ -26,10 +26,10 @@ export function fetchMyDonations(donorId: string): Promise<DonorDonation[]> {
  * Offers an institution can still reserve from: pallets left, registered within
  * the last 4 days, and a pickup window that has not closed yet.
  */
-export function fetchAvailableDonations(now = new Date()): Promise<DonationWithDonor[]> {
+export function fetchAvailableDonations(now = new Date()): Promise<AvailableDonation[]> {
   return prisma.donation.findMany({
     where: { status: 'AVAILABLE', createdAt: { gt: freshnessCutoff(now) }, overlapEnd: { gt: now } },
-    include: { donor: userSummary },
+    include: { donor: userSummary, claims: { select: { palletNumbers: true } } },
     orderBy: { createdAt: 'desc' },
   });
 }
@@ -81,25 +81,19 @@ export function countUnbundledClaims(): Promise<number> {
   return prisma.claim.count({ where: { status: 'RESERVED', transportOrderId: null } });
 }
 
-export function fetchWishlists(): Promise<WishlistWithFoodbank[]> {
-  return prisma.wishlist.findMany({ include: { foodbank: userSummary }, orderBy: { createdAt: 'desc' } });
-}
-
 /** Impact counts reserved pallets only: an offer nobody takes rescues nothing. */
-const claimWeights = { select: { pallets: true, donation: { select: { weightPerPallet: true } } } } as const;
-const toImpactRows = (rows: { pallets: number; donation: { weightPerPallet: number } }[]) =>
-  rows.map((r) => ({ numberOfPallets: r.pallets, weightPerPallet: r.donation.weightPerPallet }));
+const claimWeights = { select: { weightKg: true } } as const;
 
 export async function fetchGlobalImpact(): Promise<ImpactReport> {
-  return computeImpact(toImpactRows(await prisma.claim.findMany(claimWeights)));
+  return computeImpact(await prisma.claim.findMany(claimWeights));
 }
 
 export async function fetchImpactFor(profileId: string, role: Role): Promise<ImpactReport> {
   if (role === 'DONOR') {
-    return computeImpact(toImpactRows(await prisma.claim.findMany({ where: { donation: { donorId: profileId } }, ...claimWeights })));
+    return computeImpact(await prisma.claim.findMany({ where: { donation: { donorId: profileId } }, ...claimWeights }));
   }
   if (role === 'FOODBANK') {
-    return computeImpact(toImpactRows(await prisma.claim.findMany({ where: { foodbankId: profileId }, ...claimWeights })));
+    return computeImpact(await prisma.claim.findMany({ where: { foodbankId: profileId }, ...claimWeights }));
   }
   return fetchGlobalImpact();
 }

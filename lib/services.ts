@@ -5,11 +5,11 @@ import { Prisma } from '@/lib/generated/prisma/client';
 import { bundleWindow, planTransportOrders } from '@/lib/logistics';
 import { buildGallikerPayload, gallikerConfig, transmitToGalliker, type GallikerConfig, type GallikerResult } from '@/lib/galliker';
 import {
-  CATEGORIES, DomainError, MAX_PALLETS, MAX_WEIGHT_PER_PALLET, MIN_PASSWORD_LENGTH,
-  freshnessCutoff, isClaimable, normalizeAddress, normalizeTemperature, remainingPallets, type TransportStatus,
+  CATEGORIES, DomainError, MAX_PALLETS, MIN_PASSWORD_LENGTH, freePalletNumbers, freshnessCutoff, isClaimable,
+  normalizeAddress, normalizeTemperature, palletWeightsProblem, remainingPallets, totalWeightKg, weightOfPallets, type TransportStatus,
 } from '@/lib/domain';
 import type {
-  Application, BundleRequest, BundlingResult, DonationInput, PlannedGroup, Profile, RegistrationInput, WishlistInput,
+  Application, BundleRequest, BundlingResult, DonationInput, PlannedGroup, Profile, RegistrationInput,
 } from '@/lib/types';
 
 // ---------------------------------------------------------- registration
@@ -84,11 +84,13 @@ export async function createDonation(donor: Profile, input: DonationInput) {
   if (!temperatureRange) missing.push('Temperatur');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.bestBeforeDate ?? '')) missing.push('MHD');
   if (!input.pickupAddress?.trim()) missing.push('Abholadresse');
-  if (!Number.isInteger(input.numberOfPallets) || input.numberOfPallets < 1 || input.numberOfPallets > MAX_PALLETS) missing.push('Anzahl Paletten');
-  if (!(input.weightPerPallet > 0) || input.weightPerPallet > MAX_WEIGHT_PER_PALLET) missing.push('Gewicht pro Palette');
+  const weights = Array.isArray(input.palletWeights) ? input.palletWeights : [];
+  const weightProblem = palletWeightsProblem(weights);
+  if (weightProblem) missing.push('Gewicht der Paletten');
   const start = new Date(input.overlapStart ?? '');
   const end = new Date(input.overlapEnd ?? '');
   if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) missing.push('Abholzeitfenster');
+  if (missing.length === 1 && weightProblem) throw new DomainError(weightProblem);
   if (missing.length) throw new DomainError(`Pflichtfelder fehlen oder sind ungültig: ${missing.join(', ')}.`);
   if (end <= start) throw new DomainError('Das Abholzeitfenster-Ende muss nach dem Beginn liegen.');
   if (end <= new Date()) throw new DomainError('Das Abholzeitfenster liegt in der Vergangenheit. Bitte ein kommendes Zeitfenster wählen.');
@@ -104,8 +106,8 @@ export async function createDonation(donor: Profile, input: DonationInput) {
       temperatureRange: temperatureRange!,
       bestBeforeDate: input.bestBeforeDate,
       pickupAddress: input.pickupAddress.trim().slice(0, 200),
-      numberOfPallets: input.numberOfPallets,
-      weightPerPallet: input.weightPerPallet,
+      numberOfPallets: weights.length,
+      palletWeights: weights,
       overlapStart: start,
       overlapEnd: end,
     },
@@ -114,31 +116,33 @@ export async function createDonation(donor: Profile, input: DonationInput) {
 
 /**
  * Adds pallets to an own offer that is still open, instead of creating a duplicate.
- * The added pallets take the existing weight per pallet and pickup window; the
+ * Each added pallet brings its own weight; they take the existing pickup window, and the
  * registration date stays unchanged, so the 4-day freshness window is never extended.
  */
-export async function addPalletsToDonation(donor: Profile, donationId: number, additionalPallets: number) {
+export async function addPalletsToDonation(donor: Profile, donationId: number, addedWeights: number[]) {
   if (donor.role !== 'DONOR') throw new DomainError('Nur Spender können Angebote ergänzen.');
   if (donor.status !== 'APPROVED') throw new DomainError('Ihr Spenderkonto ist noch nicht freigegeben.');
-  if (!Number.isInteger(additionalPallets) || additionalPallets < 1) {
+  if (!Array.isArray(addedWeights) || addedWeights.length < 1) {
     throw new DomainError('Bitte die Anzahl zusätzlicher Paletten angeben.');
   }
+  const weightProblem = palletWeightsProblem(addedWeights);
+  if (weightProblem) throw new DomainError(weightProblem);
 
   const existing = await prisma.donation.findUnique({ where: { id: donationId } });
   if (!existing || existing.donorId !== donor.id) throw new DomainError('Angebot nicht gefunden.');
   if (existing.status !== 'AVAILABLE' || !isClaimable(existing)) {
     throw new DomainError('Das Angebot ist nicht mehr offen und kann nicht ergänzt werden.');
   }
-  const total = existing.numberOfPallets + additionalPallets;
-  if (total > MAX_PALLETS) throw new DomainError(`Ein Angebot umfasst höchstens ${MAX_PALLETS} Paletten.`);
+  const palletWeights = [...existing.palletWeights, ...addedWeights];
+  if (palletWeights.length > MAX_PALLETS) throw new DomainError(`Ein Angebot umfasst höchstens ${MAX_PALLETS} Paletten.`);
 
   // Optimistic lock: only update if the pallet count is still the one we read.
   const { count } = await prisma.donation.updateMany({
     where: { id: donationId, donorId: donor.id, status: 'AVAILABLE', numberOfPallets: existing.numberOfPallets },
-    data: { numberOfPallets: total },
+    data: { numberOfPallets: palletWeights.length, palletWeights },
   });
   if (count === 0) throw new DomainError('Das Angebot wurde zwischenzeitlich verändert. Bitte erneut versuchen.');
-  return { productName: existing.productName, numberOfPallets: total, totalWeightKg: total * existing.weightPerPallet };
+  return { productName: existing.productName, numberOfPallets: palletWeights.length, totalWeightKg: totalWeightKg({ palletWeights }) };
 }
 
 /**
@@ -148,18 +152,33 @@ export async function addPalletsToDonation(donor: Profile, donationId: number, a
  */
 export async function withdrawDonation(donor: Profile, donationId: number) {
   if (donor.role !== 'DONOR') throw new DomainError('Nur Spender können Angebote zurückziehen.');
-  const existing = await prisma.donation.findUnique({ where: { id: donationId } });
+  const existing = await prisma.donation.findUnique({
+    where: { id: donationId }, include: { claims: { select: { id: true, palletNumbers: true } } },
+  });
   if (!existing || existing.donorId !== donor.id) throw new DomainError('Angebot nicht gefunden.');
   const unreserved = remainingPallets(existing);
   if (existing.status !== 'AVAILABLE' || unreserved === 0) {
     throw new DomainError('Alle Paletten sind bereits reserviert. Das Angebot kann nicht mehr zurückgezogen werden.');
   }
-  const keepsReservations = existing.claimedPallets > 0;
-  const { count } = await prisma.donation.updateMany({
-    where: { id: donationId, donorId: donor.id, status: 'AVAILABLE', claimedPallets: existing.claimedPallets, numberOfPallets: existing.numberOfPallets },
-    data: keepsReservations ? { numberOfPallets: existing.claimedPallets, status: 'CLAIMED' } : { status: 'WITHDRAWN' },
-  });
-  if (count === 0) throw new DomainError('Gerade wurde etwas reserviert. Bitte die Seite neu laden und erneut versuchen.');
+  const lock = { id: donationId, donorId: donor.id, status: 'AVAILABLE', claimedPallets: existing.claimedPallets, numberOfPallets: existing.numberOfPallets };
+  if (existing.claimedPallets === 0) {
+    const { count } = await prisma.donation.updateMany({ where: lock, data: { status: 'WITHDRAWN' } });
+    if (count === 0) throw new DomainError('Gerade wurde etwas reserviert. Bitte die Seite neu laden und erneut versuchen.');
+  } else {
+    // The offer shrinks to its reserved pallets, numbered 1..n again; each claim follows its pallets.
+    const kept = existing.claims.flatMap((c) => c.palletNumbers).sort((a, b) => a - b);
+    const renumber = new Map(kept.map((n, i) => [n, i + 1]));
+    await prisma.$transaction(async (tx) => {
+      const { count } = await tx.donation.updateMany({
+        where: lock,
+        data: { numberOfPallets: kept.length, palletWeights: kept.map((n) => existing.palletWeights[n - 1]), status: 'CLAIMED' },
+      });
+      if (count === 0) throw new DomainError('Gerade wurde etwas reserviert. Bitte die Seite neu laden und erneut versuchen.');
+      for (const c of existing.claims) {
+        await tx.claim.update({ where: { id: c.id }, data: { palletNumbers: c.palletNumbers.map((n) => renumber.get(n)!) } });
+      }
+    });
+  }
   return { productName: existing.productName, withdrawnPallets: unreserved, keptPallets: existing.claimedPallets };
 }
 
@@ -167,19 +186,25 @@ export async function withdrawDonation(donor: Profile, donationId: number) {
 const CLAIM_ATTEMPTS = 3;
 
 /**
- * An institution reserves some or all remaining pallets of an offer.
+ * An institution reserves some or all remaining pallets of an offer: either a
+ * count (the next free pallets are assigned when the reservation is written) or
+ * specific pallets by number, for offers whose pallets weigh differently.
  *
  * Checked on the write path: the 4-day freshness rule, that the pickup window has
- * not closed, and that enough pallets are left. The pallet count is taken with an
- * optimistic lock (the update only applies if nobody reserved in between) and the
- * database refuses to ever reserve more than was offered. A lost race is retried.
+ * not closed, and that the chosen pallets are still free. The reservation is taken
+ * with an optimistic lock (the update only applies if nobody reserved in between) and
+ * the database refuses to ever reserve more than was offered. A lost race is retried.
  */
-export async function claimDonation(foodbank: Profile, donationId: number, pallets: number) {
+export async function claimDonation(foodbank: Profile, donationId: number, selection: number | number[]) {
   if (foodbank.role !== 'FOODBANK') throw new DomainError('Nur Abgabestellen können Spenden reservieren.');
-  if (!Number.isInteger(pallets) || pallets < 1) throw new DomainError('Bitte mindestens eine Palette wählen.');
+  const requested = Array.isArray(selection) ? [...new Set(selection)].sort((a, b) => a - b) : null;
+  const pallets = requested ? requested.length : selection as number;
+  if (!Number.isInteger(pallets) || pallets < 1 || requested?.some((n) => !Number.isInteger(n))) {
+    throw new DomainError('Bitte mindestens eine Palette wählen.');
+  }
 
   for (let attempt = 0; attempt < CLAIM_ATTEMPTS; attempt++) {
-    const d = await prisma.donation.findUnique({ where: { id: donationId } });
+    const d = await prisma.donation.findUnique({ where: { id: donationId }, include: { claims: { select: { palletNumbers: true } } } });
     if (!d) throw new DomainError('Spende nicht gefunden.');
     if (d.status === 'WITHDRAWN') throw new DomainError('Der Spender hat dieses Angebot zurückgezogen.');
     const now = new Date();
@@ -190,6 +215,13 @@ export async function claimDonation(foodbank: Profile, donationId: number, palle
     if (pallets > left) {
       throw new DomainError(`Es ${left === 1 ? 'ist nur noch 1 Palette' : `sind nur noch ${left} Paletten`} verfügbar.`);
     }
+    const free = freePalletNumbers(d);
+    const taken = requested?.filter((n) => !free.includes(n)) ?? [];
+    if (taken.length > 0) {
+      throw new DomainError(`${taken.length === 1 ? `Palette ${taken[0]} ist` : `Paletten ${taken.join(', ')} sind`} nicht mehr frei. Bitte die Auswahl prüfen.`);
+    }
+    const numbers = requested ?? free.slice(0, pallets);
+    const weightKg = weightOfPallets(d.palletWeights, numbers);
 
     const claimed = d.claimedPallets + pallets;
     const claim = await prisma.$transaction(async (tx) => {
@@ -198,10 +230,10 @@ export async function claimDonation(foodbank: Profile, donationId: number, palle
         data: { claimedPallets: claimed, status: claimed === d.numberOfPallets ? 'CLAIMED' : 'AVAILABLE' },
       });
       if (count === 0) return null; // someone else reserved in between: read again
-      return tx.claim.create({ data: { donationId, foodbankId: foodbank.id, pallets } });
+      return tx.claim.create({ data: { donationId, foodbankId: foodbank.id, pallets, palletNumbers: numbers, weightKg } });
     });
     if (claim) {
-      return { claim, productName: d.productName, remainingPallets: d.numberOfPallets - claimed, weightKg: pallets * d.weightPerPallet };
+      return { claim, productName: d.productName, remainingPallets: d.numberOfPallets - claimed, weightKg };
     }
   }
   throw new DomainError('Das Angebot wurde gerade von einer anderen Stelle reserviert. Bitte erneut versuchen.');
@@ -227,7 +259,7 @@ export async function planBundling(dispatcher: Profile): Promise<PlannedGroup[]>
     overlapStart: c.donation.overlapStart, overlapEnd: c.donation.overlapEnd,
     planned: {
       id: c.id, productName: c.donation.productName, category: c.donation.category, temperatureRange: c.donation.temperatureRange,
-      pallets: c.pallets, weightPerPallet: c.donation.weightPerPallet, overlapStart: c.donation.overlapStart,
+      pallets: c.pallets, weightKg: c.weightKg, overlapStart: c.donation.overlapStart,
       overlapEnd: c.donation.overlapEnd, foodbankName: c.foodbank.organizationName,
     },
   }));
@@ -315,7 +347,7 @@ export async function sendOrderToGalliker(orderId: number, config: GallikerConfi
       donor: { select: { organizationName: true, address: true, contactName: true, phone: true } },
       claims: {
         include: {
-          donation: { select: { productName: true, category: true, temperatureRange: true, weightPerPallet: true, bestBeforeDate: true, pickupAddress: true } },
+          donation: { select: { productName: true, category: true, temperatureRange: true, palletWeights: true, bestBeforeDate: true, pickupAddress: true } },
           foodbank: { select: { organizationName: true, address: true } },
         },
         orderBy: { id: 'asc' },
@@ -374,24 +406,4 @@ export async function setOrderStatus(dispatcher: Profile, orderId: number, statu
     }
     return updated;
   });
-}
-
-// ------------------------------------------------------------- wishlists
-export async function createWishlist(foodbank: Profile, input: WishlistInput) {
-  if (foodbank.role !== 'FOODBANK') throw new DomainError('Nur Abgabestellen können Bedarf melden.');
-  if (!input.productName?.trim()) throw new DomainError('Produkt ist erforderlich.');
-  if (!(input.quantityKg > 0)) throw new DomainError('Menge muss grösser als 0 sein.');
-  return prisma.wishlist.create({
-    data: {
-      foodbankId: foodbank.id,
-      productName: input.productName.trim().slice(0, 120),
-      quantityKg: input.quantityKg,
-      note: input.note?.trim().slice(0, 300) || null,
-    },
-  });
-}
-
-export async function deleteWishlist(foodbank: Profile, id: number) {
-  const { count } = await prisma.wishlist.deleteMany({ where: { id, foodbankId: foodbank.id } });
-  if (count === 0) throw new DomainError('Eintrag nicht gefunden oder gehört einer anderen Institution.');
 }

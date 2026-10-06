@@ -53,7 +53,7 @@ await check('map is for dispatchers only', '/dispatcher/map', foodbank, 307, [],
 await check('network view for foodbank', '/network', foodbank, 200, ['Meine Lieferungen']);
 await check('network view for dispatcher is national', '/network', dispatcher, 200, ['Alle Fahrten in der Schweiz']);
 await check('network view for donor shows only own data', '/network', migros, 200, ['Meine Transporte'], ['Riedstrasse 10', 'Coop Verteilzentrale']);
-await check('wishlist view', '/wishlist', migros, 200, ['Gesuchte Produkte', 'Reis']);
+await check('needs list is gone', '/wishlist', migros, 404, []);
 await check('logged-in user skips login', '/login', migros, 307, [], [], '/');
 await check('bogus cookie is rejected', '/donor', 'fb_session=nope', 307, [], [], '/login');
 await check('registration page is public', '/register', null, 200, ['Als Spender registrieren', 'Registrierung beantragen']);

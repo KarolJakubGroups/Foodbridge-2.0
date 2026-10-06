@@ -33,13 +33,13 @@ export async function buildDispatchMap(): Promise<MapData> {
       where: { status: { in: ['PENDING', 'DISPATCHED'] } },
       include: {
         donor: { select: { organizationName: true } },
-        claims: { include: { donation: { select: { pickupAddress: true, weightPerPallet: true, temperatureRange: true } }, foodbank: { select: { id: true, organizationName: true, address: true } } } },
+        claims: { include: { donation: { select: { pickupAddress: true, temperatureRange: true } }, foodbank: { select: { id: true, organizationName: true, address: true } } } },
       },
       orderBy: { pickupStart: 'asc' },
     }),
     prisma.claim.findMany({
       where: { status: 'RESERVED', transportOrderId: null },
-      include: { donation: { select: { donorId: true, pickupAddress: true, weightPerPallet: true, donor: { select: { organizationName: true } } } } },
+      include: { donation: { select: { donorId: true, pickupAddress: true, donor: { select: { organizationName: true } } } } },
     }),
   ]);
 
@@ -77,7 +77,7 @@ export async function buildDispatchMap(): Promise<MapData> {
       stops,
       window: { start: o.pickupStart.toISOString(), end: o.pickupEnd.toISOString() },
       pallets: o.claims.reduce((s, c) => s + c.pallets, 0),
-      weightKg: o.claims.reduce((s, c) => s + c.pallets * c.donation.weightPerPallet, 0),
+      weightKg: o.claims.reduce((s, c) => s + c.weightKg, 0),
       cold: kinds.includes('frozen') ? 'frozen' : kinds.includes('chilled') ? 'chilled' : null,
       route: route?.coordinates ?? null,
       distanceKm: route?.distanceKm ?? null,
@@ -94,7 +94,7 @@ export async function buildDispatchMap(): Promise<MapData> {
     };
     w.reservations += 1;
     w.pallets += c.pallets;
-    w.weightKg += c.pallets * c.donation.weightPerPallet;
+    w.weightKg += c.weightKg;
     waitingByPlace.set(key, w);
   }
 

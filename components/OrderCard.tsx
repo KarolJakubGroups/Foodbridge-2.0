@@ -10,7 +10,7 @@ import { AlertIcon, CheckIcon, MapPinIcon, RefreshIcon, SendIcon, SnowflakeIcon,
 
 function totals(order: TransportOrderWithDetails) {
   return {
-    kg: order.claims.reduce((s, c) => s + c.pallets * c.donation.weightPerPallet, 0),
+    kg: order.claims.reduce((s, c) => s + c.weightKg, 0),
     pallets: order.claims.reduce((s, c) => s + c.pallets, 0),
   };
 }
@@ -154,7 +154,7 @@ export function OrderCard({ order, now: nowIso, readOnly = false }: { order: Tra
           <li key={c.id} className="text-[15px] leading-snug flex flex-col gap-1">
             <span>
               <span className="font-semibold text-ink">{c.donation.productName}</span>
-              <span className="text-muted"> · {fmtPallets(c.pallets)} · {fmtKg(c.pallets * c.donation.weightPerPallet)}</span>
+              <span className="text-muted"> · {fmtPallets(c.pallets)} · {fmtKg(c.weightKg)}</span>
             </span>
             <span className="flex flex-wrap items-center gap-2 text-sm text-subtle">
               <TempPill value={c.donation.temperatureRange} />
