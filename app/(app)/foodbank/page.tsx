@@ -3,7 +3,7 @@ import { requireRole } from '@/lib/auth';
 import { fetchAvailableDonations, fetchImpactFor, fetchMyClaims } from '@/lib/queries';
 import { fmtCount, fmtDateOfInstant, fmtKg, fmtNumber, fmtPallets, fmtWindow } from '@/lib/format';
 import type { ClaimWithDonation } from '@/lib/types';
-import { Card, EmptyState, PageHeader, Pill, TempPill, linkCls, type Tone } from '@/components/ui';
+import { Card, EmptyState, FoodPhoto, PageHeader, Pill, TempPill, linkCls, type Tone } from '@/components/ui';
 import { PackageIcon } from '@/components/icons';
 import { AvailableDonations } from '@/components/AvailableDonations';
 
@@ -15,7 +15,7 @@ function reservationStatus(c: ClaimWithDonation, now: Date): { label: string; to
   if (c.status === 'COMPLETED') return { label: 'Geliefert', tone: 'gray', note: order ? `Am ${fmtDateOfInstant(order.pickupEnd)}` : '' };
   if (order?.status === 'DISPATCHED') return { label: 'Unterwegs', tone: 'orange', note: 'Der Lastwagen ist unterwegs' };
   if (c.status === 'BUNDLED' && order) return { label: 'Transport geplant', tone: 'blue', note: `Abholung ${fmtWindow(order.pickupStart, order.pickupEnd, now)}` };
-  return { label: 'Reserviert', tone: 'violet', note: 'Transport wird geplant' };
+  return { label: 'Reserviert', tone: 'brand', note: 'Transport wird geplant' };
 }
 
 export default async function FoodbankPage() {
@@ -47,7 +47,9 @@ export default async function FoodbankPage() {
                   const s = reservationStatus(c, now);
                   const partOfOffer = c.pallets < c.donation.numberOfPallets;
                   return (
-                    <li key={c.id} className="py-4 flex flex-col gap-1.5">
+                    <li key={c.id} className="py-4 flex gap-3.5">
+                      <FoodPhoto item={c.donation} className="size-14 rounded-2xl shrink-0" />
+                      <div className="min-w-0 flex-1 flex flex-col gap-1.5">
                       <div className="flex items-baseline justify-between gap-3">
                         <span className="text-base font-semibold text-ink">{c.donation.productName}</span>
                         <span className="text-[15px] text-muted tabular-nums whitespace-nowrap">{fmtKg(c.pallets * c.donation.weightPerPallet)}</span>
@@ -60,6 +62,7 @@ export default async function FoodbankPage() {
                         <Pill tone={s.tone}>{s.label}</Pill>
                         {s.note && <span className="text-sm text-muted">{s.note}</span>}
                       </div>
+                      </div>
                     </li>
                   );
                 })}
@@ -68,10 +71,11 @@ export default async function FoodbankPage() {
             {claims.length > 0 && <Link href="/network" className={`${linkCls} inline-block mt-5`}>Alle Lieferungen ansehen</Link>}
           </Card>
 
-          <section className="rounded-2xl bg-brand-700 text-white px-6 py-6 flex flex-col gap-1.5">
-            <span className="text-[15px] text-[#d5ebdd]">Bisher erhalten</span>
+          <section className="relative overflow-hidden rounded-3xl bg-brand-700 text-white px-6 py-6 flex flex-col gap-1.5 shadow-card">
+            <span aria-hidden className="absolute -right-10 -top-10 size-40 rounded-full bg-white/10" />
+            <span className="text-[15px] text-brand-100">Bisher erhalten</span>
             <span className="font-display text-4xl font-bold tabular-nums">{fmtKg(impact.totalWeightKg)}</span>
-            <span className="text-base text-[#e9f5ee]">≈ {fmtNumber(impact.meals, 0)} Mahlzeiten für Ihre Gäste</span>
+            <span className="text-base text-brand-100">≈ {fmtNumber(impact.meals, 0)} Mahlzeiten für Ihre Gäste</span>
           </section>
         </aside>
       </div>

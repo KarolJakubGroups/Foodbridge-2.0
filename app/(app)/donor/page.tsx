@@ -7,7 +7,8 @@ import {
   CATEGORY_LABEL, fmtBestBefore, fmtCount, fmtDayTime, fmtKg, fmtLongDate, fmtMonth, fmtNumber, fmtPallets, fmtWindow, greeting,
 } from '@/lib/format';
 import { claimDeadline, remainingPallets, type Category } from '@/lib/domain';
-import { Card, PageHeader, Pill, SectionTitle, Stat, TONE, btn, linkCls, type Tone } from '@/components/ui';
+import { Card, FoodPhoto, PageHeader, PhotoPill, Pill, SectionTitle, Stat, TONE, btn, linkCls, type Tone } from '@/components/ui';
+import { WAREHOUSE_IMAGE } from '@/lib/images';
 import { AlertIcon, ClockIcon, PlusIcon, TruckIcon } from '@/components/icons';
 import { DonationList } from '@/components/DonationList';
 import { PrintButton } from '@/components/PrintButton';
@@ -19,12 +20,12 @@ function ActionCard({ tone, icon, label, title, children, footer }: {
   tone: Tone; icon: ReactNode; label: string; title: ReactNode; children: ReactNode; footer?: ReactNode;
 }) {
   return (
-    <article className="bg-white border border-line rounded-2xl p-5 md:p-6 flex flex-col gap-3">
+    <article className="bg-white rounded-3xl shadow-card p-5 md:p-6 flex flex-col gap-3">
       <div className="flex items-center gap-3">
-        <span className={`flex size-11 shrink-0 items-center justify-center rounded-xl ${TONE[tone]}`}>{icon}</span>
+        <span className={`flex size-11 shrink-0 items-center justify-center rounded-full ${TONE[tone]}`}>{icon}</span>
         <span className={`text-[15px] font-semibold ${TONE[tone].split(' ')[1]}`}>{label}</span>
       </div>
-      <div className="font-display text-2xl font-bold text-ink">{title}</div>
+      <div className="text-xl font-bold tracking-[-0.01em] text-ink">{title}</div>
       <div className="text-base leading-relaxed text-ink-2 space-y-1">{children}</div>
       {footer && <div className="mt-auto pt-1 flex flex-wrap items-center gap-3">{footer}</div>}
     </article>
@@ -58,16 +59,33 @@ export default async function DonorPage() {
           <SectionTitle>Heute zu tun</SectionTitle>
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-5">
             {nextPickup && (
-              <ActionCard tone="blue" icon={<TruckIcon />} label="Nächste Abholung" title={fmtWindow(nextPickup.pickupStart, nextPickup.pickupEnd, now)}
-                footer={<Link href="/network" className={linkCls}>Details ansehen</Link>}>
-                <p>
-                  {nextPickup.pickupEnd < now
-                    ? 'Das Abholfenster ist vorbei, die Abholung steht aber noch aus. Die Disposition meldet sich für einen neuen Termin. '
-                    : 'Galliker holt in diesem Zeitfenster ab. '}
-                  Bitte {fmtPallets(nextPickup.totalPallets)} ({fmtKg(nextPickup.totalWeightKg)}) bereithalten:{' '}
-                  {nextPickup.items.map((i) => `${i.productName} (${fmtPallets(i.pallets)})`).join(', ')}.
-                </p>
-              </ActionCard>
+              <article className="bg-white rounded-3xl shadow-card overflow-hidden flex flex-col">
+                <div className="relative h-36 shrink-0">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={WAREHOUSE_IMAGE} alt="" className="absolute inset-0 size-full object-cover" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent" />
+                  <PhotoPill className="absolute top-3 left-3"><TruckIcon className="size-4 text-brand-700" />Nächste Abholung</PhotoPill>
+                  <div className="absolute bottom-3 left-4 right-4 text-white">
+                    <div className="text-2xl font-bold tracking-[-0.02em]">{fmtWindow(nextPickup.pickupStart, nextPickup.pickupEnd, now)}</div>
+                    <div className="text-sm text-white/85">Galliker · {fmtPallets(nextPickup.totalPallets)} · {fmtKg(nextPickup.totalWeightKg)}</div>
+                  </div>
+                </div>
+                <div className="p-5 flex flex-col gap-3 flex-1">
+                  {nextPickup.pickupEnd < now && (
+                    <p className="text-[15px] text-[#9a4a0a]">Das Abholfenster ist vorbei, die Abholung steht aber noch aus. Die Disposition meldet sich für einen neuen Termin.</p>
+                  )}
+                  <ul className="flex flex-col gap-2.5">
+                    {nextPickup.items.map((i) => (
+                      <li key={`${i.productName}-${i.pallets}`} className="flex items-center gap-3">
+                        <FoodPhoto item={{ productName: i.productName }} className="size-10 rounded-xl shrink-0" />
+                        <span className="flex-1 text-[15px] font-medium text-ink">{i.productName}</span>
+                        <span className="text-sm text-muted">{fmtPallets(i.pallets)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  <Link href="/network" className={`${linkCls} mt-auto pt-1`}>Details ansehen</Link>
+                </div>
+              </article>
             )}
             {expiringSoon.length > 0 && (
               <ActionCard tone="orange" icon={<ClockIcon />} label="Bald nicht mehr sichtbar"
@@ -118,7 +136,7 @@ export default async function DonorPage() {
           <Card title={`Ihre Wirkung im ${fmtMonth(now)}`}>
             <div className="space-y-5">
               <div className="space-y-1.5">
-                <div className="font-display text-5xl font-bold text-brand-700 tabular-nums">{fmtKg(impact.thisMonth.totalWeightKg)}</div>
+                <div className="text-5xl font-bold tracking-[-0.03em] text-brand-700 tabular-nums">{fmtKg(impact.thisMonth.totalWeightKg)}</div>
                 <div className="text-base text-ink-2">Lebensmittel gerettet</div>
                 {impact.deltaPercent !== null && (
                   <Pill tone={impact.deltaPercent >= 0 ? 'green' : 'sand'} className="mt-1">

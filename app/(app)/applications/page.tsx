@@ -18,7 +18,7 @@ function ago(date: Date, now: Date): string {
 
 function PendingCard({ a, now }: { a: Application; now: Date }) {
   return (
-    <article className="bg-white border border-line rounded-2xl p-5 md:p-7 flex flex-col gap-5">
+    <article className="bg-white rounded-3xl shadow-card p-5 md:p-7 flex flex-col gap-5">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 space-y-1">
           <h3 className="text-xl font-bold text-ink">{a.organizationName}</h3>
@@ -52,7 +52,7 @@ export default async function ApplicationsPage() {
       <section className="space-y-4">
         <SectionTitle aside={open.length > 0 ? String(open.length) : undefined}>Warten auf Ihre Prüfung</SectionTitle>
         {open.length === 0 ? (
-          <div className="bg-white border border-line rounded-2xl">
+          <div className="bg-white rounded-3xl shadow-card">
             <EmptyState icon={<UserCheckIcon className="size-6" />} title="Alles erledigt">Im Moment wartet kein Antrag auf Ihre Prüfung.</EmptyState>
           </div>
         ) : (

@@ -9,7 +9,7 @@ import {
   CATEGORIES_OPTIONS, TEMPERATURES, categoryLabel, fmtBestBefore, fmtDate, fmtDayTime, fmtKg, fmtPallets, fmtTime, isTemperaturePreset,
 } from '@/lib/format';
 import { FRESHNESS_DAYS, MAX_PALLETS, MAX_TEMPERATURE_LENGTH, MAX_WEIGHT_PER_PALLET, normalizeProductName } from '@/lib/domain';
-import { Alert, Field, Pill, TempPill, btn, chipCls, inputCls, linkCls } from '@/components/ui';
+import { Alert, Field, FoodPhoto, PhotoPill, TempPill, btn, chipCls, inputCls, linkCls } from '@/components/ui';
 import { CheckIcon, InfoIcon, MapPinIcon, MinusIcon, PlusIcon } from '@/components/icons';
 
 const FORM_ID = 'donation-form';
@@ -165,7 +165,7 @@ export function DonationForm({ defaultAddress, organizationName, openDonations, 
   // ---------------------------------------------------------------- done
   if (done) {
     return (
-      <div ref={topRef} className="scroll-mt-24 bg-white border border-line rounded-2xl px-6 py-12 md:py-16 flex flex-col items-center text-center gap-4 max-w-2xl">
+      <div ref={topRef} className="scroll-mt-24 bg-white rounded-3xl shadow-card px-6 py-12 md:py-16 flex flex-col items-center text-center gap-4 max-w-2xl">
         <span className="flex size-14 items-center justify-center rounded-full bg-brand-50 text-brand-700"><CheckIcon className="size-7" /></span>
         <h2 className="font-display text-2xl md:text-3xl font-bold text-ink">Vielen Dank!</h2>
         <p className="text-lg text-ink-2 max-w-md" role="status">{done}</p>
@@ -183,7 +183,7 @@ export function DonationForm({ defaultAddress, organizationName, openDonations, 
     return (
       <div ref={topRef} className="scroll-mt-24 max-w-2xl space-y-4">
         {error && <Alert onClose={() => setError(null)}>{error}</Alert>}
-        <form onSubmit={submit} className="bg-white border border-line rounded-2xl p-5 md:p-8 flex flex-col gap-6">
+        <form onSubmit={submit} className="bg-white rounded-3xl shadow-card p-5 md:p-8 flex flex-col gap-6">
           <div className="space-y-2">
             <h2 className="text-xl md:text-[22px] font-bold text-ink">Paletten zu «{mergeTarget.productName}» hinzufügen</h2>
             <p className="text-base text-muted"><Existing d={mergeTarget} /></p>
@@ -220,7 +220,7 @@ export function DonationForm({ defaultAddress, organizationName, openDonations, 
     <div ref={topRef} className="scroll-mt-24 space-y-5">
       {error && <Alert onClose={() => setError(null)}>{error}</Alert>}
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_400px] gap-6 lg:gap-8 items-start">
-        <form id={FORM_ID} onSubmit={submit} className="@container bg-white border border-line rounded-2xl flex flex-col min-w-0">
+        <form id={FORM_ID} onSubmit={submit} className="@container bg-white rounded-3xl shadow-card flex flex-col min-w-0">
           <Step n={1} title="Was möchten Sie spenden?">
             <Field label="Produkt">
               <input className={inputCls} value={form.productName} onChange={set('productName')} required maxLength={120}
@@ -343,7 +343,7 @@ export function DonationForm({ defaultAddress, organizationName, openDonations, 
                 <input className={inputCls} value={form.pickupAddress} onChange={set('pickupAddress')} required maxLength={200} autoFocus />
               </Field>
             ) : (
-              <div className="flex items-center gap-3.5 rounded-xl bg-sand px-4 md:px-5 py-4">
+              <div className="flex items-center gap-3.5 rounded-2xl bg-sand px-4 md:px-5 py-4">
                 <MapPinIcon className="size-6 shrink-0 text-muted" />
                 <div className="flex flex-col flex-1 min-w-0">
                   <span className="text-sm text-muted">Abholadresse</span>
@@ -357,17 +357,21 @@ export function DonationForm({ defaultAddress, organizationName, openDonations, 
 
         <aside className="lg:sticky lg:top-28 flex flex-col gap-4">
           <span className="text-base font-semibold text-muted">So sehen Abgabestellen Ihr Angebot</span>
-          <div className="bg-white border border-line rounded-2xl p-6 flex flex-col gap-3.5" aria-live="polite">
-            <div className="flex flex-wrap gap-2">
-              {form.category ? <Pill>{categoryLabel(form.category)}</Pill> : <Pill>Warengruppe</Pill>}
-              {form.temperatureRange.trim() ? <TempPill value={form.temperatureRange.trim()} /> : <Pill>Lagerung</Pill>}
+          <div className="bg-white rounded-3xl shadow-card overflow-hidden flex flex-col" aria-live="polite">
+            <div className="relative h-40">
+              <FoodPhoto item={{ productName: form.productName, category: form.category, temperatureRange: form.temperatureRange }} className="absolute inset-0 size-full" />
+              <div className="absolute top-3 left-3 right-3 flex flex-wrap gap-1.5">
+                {form.temperatureRange.trim() ? <TempPill value={form.temperatureRange.trim()} /> : <PhotoPill>Lagerung</PhotoPill>}
+                <PhotoPill>{form.category ? categoryLabel(form.category) : 'Warengruppe'}</PhotoPill>
+              </div>
             </div>
+            <div className="p-6 flex flex-col gap-3.5">
             <span className={`text-[21px] font-bold ${form.productName.trim() ? 'text-ink' : 'text-subtle'}`}>
               {form.productName.trim() || 'Produktname'}
             </span>
             <span className="text-[15px] text-muted">{organizationName}</span>
             <div className="flex items-baseline gap-2.5">
-              <span className="font-display text-[32px] font-bold text-ink tabular-nums">{fmtKg(pallets * perPallet)}</span>
+              <span className="text-[32px] font-bold tracking-[-0.02em] text-brand-700 tabular-nums">{fmtKg(pallets * perPallet)}</span>
               <span className="text-base text-muted">{fmtPallets(pallets)}</span>
             </div>
             <div className="flex flex-col gap-1.5 text-[15px] text-ink-2">
@@ -375,6 +379,7 @@ export function DonationForm({ defaultAddress, organizationName, openDonations, 
                 <span>Abholung {fmtDayTime(start, new Date())}–{sameDay ? fmtTime(end) : fmtDayTime(end, new Date())} Uhr</span>
               )}
               {bestBefore && <span className={bestBefore.urgent ? 'font-semibold text-[#9a4a0a]' : ''}>{bestBefore.text}</span>}
+            </div>
             </div>
           </div>
           <button form={FORM_ID} className={`${btn('primary', 'lg')} w-full`} disabled={pending}>

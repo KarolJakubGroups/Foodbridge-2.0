@@ -41,8 +41,8 @@ export function Nav({ items }: { items: NavItem[] }) {
         const active = it.href === current;
         return (
           <Link key={it.href} href={it.href} aria-current={active ? 'page' : undefined}
-            className={`flex items-center gap-2 px-3 xl:px-4 py-2.5 rounded-xl text-[15px] xl:text-base whitespace-nowrap ${active
-              ? 'bg-brand-50 text-brand-800 font-semibold' : 'text-ink-2 font-medium hover:bg-sand'}`}>
+            className={`flex items-center gap-2 px-3.5 xl:px-4 py-2 rounded-full text-[15px] whitespace-nowrap transition-colors ${active
+              ? 'bg-brand-700 text-white font-semibold' : 'text-ink-2 font-medium hover:bg-sand'}`}>
             {it.label}<Count n={it.badge} />
           </Link>
         );
@@ -55,7 +55,7 @@ export function Nav({ items }: { items: NavItem[] }) {
 export function MobileNav({ items }: { items: NavItem[] }) {
   const current = activeHref(usePathname(), items);
   return (
-    <nav className="lg:hidden fixed bottom-0 inset-x-0 z-20 bg-white border-t border-line no-print"
+    <nav className="lg:hidden fixed bottom-0 inset-x-0 z-20 bg-white/95 backdrop-blur border-t border-line no-print"
       style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
       <div className="grid" style={{ gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))` }}>
         {items.map((it) => {
@@ -63,8 +63,8 @@ export function MobileNav({ items }: { items: NavItem[] }) {
           const Icon = ICONS[it.icon];
           return (
             <Link key={it.href} href={it.href} aria-current={active ? 'page' : undefined}
-              className={`relative flex flex-col items-center justify-center gap-1 min-h-16 text-xs ${active ? 'text-brand-700 font-bold' : 'text-muted font-medium'}`}>
-              <Icon className="size-6" />
+              className={`relative flex flex-col items-center justify-center gap-1 min-h-16 text-[11px] ${active ? 'text-brand-700 font-bold' : 'text-subtle font-medium'}`}>
+              <span className={`flex h-8 w-14 items-center justify-center rounded-full transition-colors ${active ? 'bg-brand-50' : ''}`}><Icon className="size-[22px]" /></span>
               <span>{it.short}</span>
               {Boolean(it.badge) && (
                 <span className="absolute top-2 left-1/2 ml-2 min-w-5 h-5 px-1 rounded-full bg-[#b45309] text-white text-[11px] font-bold flex items-center justify-center">

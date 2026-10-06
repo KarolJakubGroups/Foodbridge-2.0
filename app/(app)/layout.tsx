@@ -37,14 +37,14 @@ export default async function AppLayout({ children }: LayoutProps<'/'>) {
 
   return (
     <>
-      <header className="bg-white border-b border-line no-print sticky top-0 z-20">
+      <header className="bg-white/90 backdrop-blur border-b border-line no-print sticky top-0 z-20">
         <div className="max-w-[1440px] mx-auto h-16 lg:h-[72px] px-4 md:px-8 xl:px-16 flex items-center gap-4 xl:gap-10">
           <Link href={ROLE_HOME[profile.role]} className="shrink-0 rounded-xl focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-700/25">
             <Logo />
           </Link>
           {verified ? <Nav items={items} /> : <div className="flex-1" />}
           <div className="ml-auto flex items-center gap-3 shrink-0">
-            <span title={profile.organizationName} className="hidden sm:flex size-10 shrink-0 items-center justify-center rounded-full bg-[#f1e7d6] text-[#7a4b12] text-[15px] font-bold">
+            <span title={profile.organizationName} className="hidden sm:flex size-10 shrink-0 items-center justify-center rounded-full bg-brand-50 text-brand-700 text-[14px] font-bold">
               {initials(profile.organizationName)}
             </span>
             <div className="hidden md:flex lg:hidden 2xl:flex flex-col leading-tight max-w-52 min-w-0">
@@ -52,7 +52,7 @@ export default async function AppLayout({ children }: LayoutProps<'/'>) {
               <span className="text-[13px] text-subtle">{ROLE_LABEL[profile.role]}</span>
             </div>
             <form action={logout}>
-              <button className="inline-flex items-center gap-2 h-10 px-3 rounded-lg border border-control bg-white text-[15px] font-medium text-ink-2 hover:bg-sand"
+              <button className="inline-flex items-center gap-2 h-10 px-3.5 rounded-full border border-control bg-white text-[15px] font-medium text-ink-2 hover:bg-sand"
                 aria-label="Abmelden">
                 <LogOutIcon className="size-4" /><span className="hidden xl:inline">Abmelden</span>
               </button>
@@ -65,7 +65,7 @@ export default async function AppLayout({ children }: LayoutProps<'/'>) {
       </main>
       <footer className="hidden lg:block border-t border-line no-print">
         <div className="max-w-[1440px] mx-auto px-8 xl:px-16 py-4 text-sm text-subtle">
-          © 2026 Stiftung Schweizer Tafel
+          © 2026 Stiftung Schweizer Tafel · Fotos: Wikimedia Commons (CC0, CC BY-SA) · <a href="/images/food/CREDITS.md" className="underline underline-offset-2 hover:text-ink">Bildnachweise</a>
         </div>
       </footer>
       {verified && <MobileNav items={items} />}

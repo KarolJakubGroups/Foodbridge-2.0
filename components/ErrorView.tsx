@@ -45,7 +45,7 @@ export function ErrorView({ error, retry }: { error: Error & { digest?: string }
 
   return (
     <div className="max-w-xl mx-auto py-10 md:py-16 px-1" role="alert">
-      <div className="bg-white border border-line rounded-2xl p-6 md:p-8 flex flex-col gap-5">
+      <div className="bg-white rounded-3xl shadow-card p-6 md:p-8 flex flex-col gap-5">
         <span className="flex size-14 items-center justify-center rounded-2xl bg-[#fdecea] text-[#9b1c14]"><Icon className="size-7" /></span>
         <div className="space-y-2">
           <h1 className="font-display text-2xl md:text-3xl font-bold text-ink">{title}</h1>

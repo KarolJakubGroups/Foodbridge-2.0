@@ -12,7 +12,7 @@ export default async function PendingPage() {
   const rejected = profile.status === 'REJECTED';
 
   return (
-    <div className="max-w-xl mx-auto md:mt-6 bg-white border border-line rounded-2xl p-6 md:p-10 flex flex-col items-center text-center gap-4">
+    <div className="max-w-xl mx-auto md:mt-6 bg-white rounded-3xl shadow-card p-6 md:p-10 flex flex-col items-center text-center gap-4">
       <span className={`flex size-14 items-center justify-center rounded-full ${rejected ? TONE.red : TONE.orange}`}>
         {rejected ? <XIcon className="size-7" /> : <ClockIcon className="size-7" />}
       </span>

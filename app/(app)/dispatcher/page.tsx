@@ -41,8 +41,8 @@ export default async function DispatcherPage() {
         actions={<Link href="/dispatcher/map" className={btn('ghost')}><MapIcon className="size-5" />Karte ansehen</Link>}
       />
 
-      <section className="bg-white border border-line rounded-2xl p-5 md:p-7 flex flex-col md:flex-row md:items-center gap-5">
-        <span className={`flex size-14 shrink-0 items-center justify-center rounded-2xl ${TONE.green}`}><LayersIcon className="size-7" /></span>
+      <section className="bg-white rounded-3xl shadow-card p-5 md:p-7 flex flex-col md:flex-row md:items-center gap-5">
+        <span className={`flex size-14 shrink-0 items-center justify-center rounded-full ${TONE.brand}`}><LayersIcon className="size-7" /></span>
         <div className="flex-1 space-y-1.5">
           <p className="text-xl md:text-[22px] font-bold text-ink">
             {waiting === 0 ? 'Keine Reservierungen warten auf einen Transport'

@@ -20,8 +20,10 @@ export default async function WishlistPage() {
       <PageHeader
         title={isFoodbank ? 'Bedarf melden' : 'Gesuchte Produkte'}
         subtitle={isFoodbank
-          ? 'Sagen Sie Spendern, was Ihnen gerade fehlt. Alle Spender sehen diese Liste.'
-          : 'Das brauchen soziale Institutionen gerade besonders.'}
+          ? 'Tragen Sie hier ein, welche Lebensmittel Ihnen gerade fehlen. Alle Spender sehen diese Liste und können gezielt spenden. Ist der Bedarf gedeckt, klicken Sie auf «Erledigt».'
+          : isDonor
+            ? 'Diese Lebensmittel fehlen den Abgabestellen gerade. Haben Sie davon etwas übrig? Dann melden Sie es mit «Überschuss melden».'
+            : 'Diese Lebensmittel fehlen den Abgabestellen gerade. Die Liste dient nur zur Information, Sie müssen hier nichts tun.'}
         actions={isDonor ? <Link href="/donor/new" className={btn('primary')}><PlusIcon className="size-5" />Überschuss melden</Link> : undefined}
       />
       <div className={`grid grid-cols-1 gap-6 lg:gap-7 items-start ${isFoodbank ? 'lg:grid-cols-[400px_minmax(0,1fr)]' : ''}`}>

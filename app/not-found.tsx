@@ -15,7 +15,7 @@ export default function NotFound() {
         </div>
       </header>
       <main className="w-full max-w-xl mx-auto px-4 py-10 md:py-16">
-        <div className="bg-white border border-line rounded-2xl p-6 md:p-8 flex flex-col gap-5">
+        <div className="bg-white rounded-3xl shadow-card p-6 md:p-8 flex flex-col gap-5">
           <span className="flex size-14 items-center justify-center rounded-2xl bg-sand text-subtle"><MapPinIcon className="size-7" /></span>
           <div className="space-y-2">
             <p className="text-sm font-semibold text-muted">Fehler 404</p>

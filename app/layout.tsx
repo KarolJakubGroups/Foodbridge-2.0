@@ -1,9 +1,8 @@
 import type { Metadata } from 'next';
-import { Bricolage_Grotesque, Figtree } from 'next/font/google';
+import { DM_Sans } from 'next/font/google';
 import './globals.css';
 
-const figtree = Figtree({ variable: '--font-figtree', subsets: ['latin'] });
-const bricolage = Bricolage_Grotesque({ variable: '--font-bricolage', subsets: ['latin'], weight: ['600', '700'] });
+const dmSans = DM_Sans({ variable: '--font-dm-sans', subsets: ['latin', 'latin-ext'] });
 
 export const metadata: Metadata = {
   title: 'FoodBridge · Schweizer Tafel',
@@ -12,7 +11,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: LayoutProps<'/'>) {
   return (
-    <html lang="de" className={`${figtree.variable} ${bricolage.variable} h-full antialiased`}>
+    <html lang="de" className={`${dmSans.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col">{children}</body>
     </html>
   );

@@ -114,7 +114,7 @@ export function DispatchMap({ data, now: nowIso }: { data: MapData; now: string 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_360px] gap-5 lg:gap-6 items-start">
       <div className="flex flex-col gap-3 min-w-0">
-        <div className="relative isolate z-0 overflow-hidden rounded-2xl border border-line bg-sand">
+        <div className="relative isolate z-0 overflow-hidden rounded-3xl shadow-card bg-sand">
           <div ref={containerRef} className="h-[58vh] min-h-[360px] lg:h-[calc(100vh-260px)] lg:min-h-[480px] w-full" role="img"
             aria-label="Karte mit Abholadressen, Lieferadressen und Fahrtrouten. Die gleichen Angaben stehen in der Liste." />
           {!hasPoints && (
@@ -142,7 +142,7 @@ export function DispatchMap({ data, now: nowIso }: { data: MapData; now: string 
             </span>
           </div>
         )}
-        <section className="bg-white border border-line rounded-2xl">
+        <section className="bg-white rounded-3xl shadow-card">
           <h2 className="px-5 pt-5 pb-3 text-lg font-bold text-ink">Fahrten ({data.orders.length})</h2>
           {data.orders.length === 0 ? (
             <p className="px-5 pb-5 text-[15px] text-muted">Keine geplanten oder laufenden Fahrten.</p>
@@ -174,7 +174,7 @@ export function DispatchMap({ data, now: nowIso }: { data: MapData; now: string 
           )}
         </section>
         {data.waiting.length > 0 && (
-          <section className="bg-white border border-line rounded-2xl">
+          <section className="bg-white rounded-3xl shadow-card">
             <h2 className="px-5 pt-5 pb-3 text-lg font-bold text-ink">Warten auf einen Transport</h2>
             <ul className="divide-y divide-line-soft border-t border-line-soft">
               {data.waiting.map((w) => (

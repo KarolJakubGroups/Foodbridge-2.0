@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react';
 import type { DonorDonation } from '@/lib/types';
 import { STATE_LABEL, categoryLabel, fmtBestBefore, fmtDayTime, fmtKg, fmtPallets, fmtWindow, tempShort } from '@/lib/format';
 import { claimDeadline, donationState, remainingPallets, type DonationState } from '@/lib/domain';
-import { EmptyState, PalletBar, StateBadge, StateProgress, inputCls } from '@/components/ui';
+import { EmptyState, FoodPhoto, PalletBar, StateBadge, StateProgress, inputCls } from '@/components/ui';
 import { PackageIcon, SearchIcon } from '@/components/icons';
 import { WithdrawButton } from '@/components/WithdrawButton';
 
@@ -112,7 +112,7 @@ export function DonationList({ donations, now: nowIso }: { donations: DonorDonat
         </div>
       ) : (
         <ul>
-          <li aria-hidden className="hidden @3xl:grid grid-cols-[minmax(0,1fr)_180px_200px_auto] gap-5 px-7 py-2.5 bg-sand border-t border-line-soft text-sm font-semibold text-subtle">
+          <li aria-hidden className="hidden @3xl:grid grid-cols-[minmax(0,1fr)_180px_200px_auto] gap-5 px-7 py-2.5 border-t border-line-soft text-[13px] font-semibold uppercase tracking-wide text-subtle">
             <span>Produkt</span><span>Stand</span><span>Nächster Schritt</span><span className="w-32" />
           </li>
           {rows.map(({ d, state }) => {
@@ -122,7 +122,9 @@ export function DonationList({ donations, now: nowIso }: { donations: DonorDonat
             const canWithdraw = d.status === 'AVAILABLE' && left > 0;
             return (
               <li key={d.id} className="grid grid-cols-1 @md:grid-cols-2 @3xl:grid-cols-[minmax(0,1fr)_180px_200px_auto] gap-x-5 gap-y-3 px-5 md:px-7 py-5 border-t border-line-soft items-center">
-                <div className="flex flex-col gap-1 min-w-0 @md:col-span-2 @3xl:col-span-1">
+                <div className="flex gap-4 min-w-0 @md:col-span-2 @3xl:col-span-1">
+                  <FoodPhoto item={d} className="size-16 rounded-2xl shrink-0" />
+                  <div className="flex flex-col gap-1 min-w-0">
                   <span className="text-[17px] font-semibold text-ink">{d.productName}</span>
                   <span className="text-[15px] text-muted">
                     {categoryLabel(d.category)} · {tempShort(d.temperatureRange)} · {fmtPallets(d.numberOfPallets)} · {fmtKg(d.numberOfPallets * d.weightPerPallet)}
@@ -138,6 +140,7 @@ export function DonationList({ donations, now: nowIso }: { donations: DonorDonat
                   {showBestBefore && (
                     <span className={`text-sm ${bestBefore.urgent ? 'font-semibold text-[#9a4a0a]' : 'text-subtle'}`}>{bestBefore.text}</span>
                   )}
+                  </div>
                 </div>
                 <div className="flex flex-col gap-2 items-start">
                   <StateBadge state={state} />

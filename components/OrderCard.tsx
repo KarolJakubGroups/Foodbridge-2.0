@@ -5,7 +5,7 @@ import { resendToGalliker, setOrderStatus } from '@/lib/actions';
 import { callAction } from '@/lib/call-action';
 import type { TransportOrderWithDetails } from '@/lib/types';
 import { fmtCount, fmtDateOfInstant, fmtDayTime, fmtKg, fmtPallets, fmtWindow, tempKind } from '@/lib/format';
-import { Alert, Pill, TempPill, TransportBadge, btn } from '@/components/ui';
+import { Alert, FoodPhoto, Pill, TempPill, TransportBadge, btn } from '@/components/ui';
 import { AlertIcon, CheckIcon, MapPinIcon, RefreshIcon, SendIcon, SnowflakeIcon, ThermometerIcon, TruckIcon } from '@/components/icons';
 
 function totals(order: TransportOrderWithDetails) {
@@ -38,7 +38,7 @@ function destinations(order: TransportOrderWithDetails) {
 export function OrderSummary({ order }: { order: TransportOrderWithDetails }) {
   const { kg } = totals(order);
   return (
-    <article className="bg-white border border-line rounded-2xl px-5 py-4 flex items-center justify-between gap-3">
+    <article className="bg-white rounded-2xl shadow-card px-5 py-4 flex items-center justify-between gap-3">
       <div className="min-w-0">
         <div className="text-[17px] font-semibold text-ink truncate">{order.donor.organizationName}</div>
         <div className="text-sm text-muted">Auftrag {order.id} · {fmtDateOfInstant(order.pickupEnd)}</div>
@@ -115,7 +115,7 @@ export function OrderCard({ order, now: nowIso, readOnly = false }: { order: Tra
   };
 
   return (
-    <article className="bg-white border border-line rounded-2xl p-5 md:p-6 flex flex-col gap-4">
+    <article className="bg-white rounded-3xl shadow-card p-5 md:p-6 flex flex-col gap-4">
       <div className="flex items-center justify-between gap-3">
         <span className="text-sm text-subtle">Auftrag {order.id} · {fmtCount(order.claims.length, 'Position', 'Positionen')}</span>
         {readOnly && <TransportBadge status={order.status} />}
@@ -128,11 +128,11 @@ export function OrderCard({ order, now: nowIso, readOnly = false }: { order: Tra
         )}
       </div>
       <div className="grid grid-cols-1 min-[420px]:grid-cols-2 gap-2.5">
-        <div className="rounded-xl bg-sand px-3.5 py-3">
+        <div className="rounded-2xl bg-sand px-3.5 py-3">
           <div className="text-sm text-muted">{order.status === 'COMPLETED' ? 'Abgeholt im Zeitfenster' : 'Abholfenster'}</div>
           <div className="text-[17px] font-bold text-ink">{fmtWindow(order.pickupStart, order.pickupEnd, now)}</div>
         </div>
-        <div className="rounded-xl bg-sand px-3.5 py-3">
+        <div className="rounded-2xl bg-sand px-3.5 py-3">
           <div className="text-sm text-muted">Ladung</div>
           <div className="text-[17px] font-bold text-ink tabular-nums">{fmtKg(kg)}</div>
           <div className="text-sm text-muted">{fmtPallets(pallets)}</div>
@@ -151,7 +151,9 @@ export function OrderCard({ order, now: nowIso, readOnly = false }: { order: Tra
       )}
       <ul className="flex flex-col gap-2.5">
         {order.claims.map((c) => (
-          <li key={c.id} className="text-[15px] leading-snug flex flex-col gap-1">
+          <li key={c.id} className="text-[15px] leading-snug flex gap-3">
+            <FoodPhoto item={c.donation} className="size-12 rounded-xl shrink-0" />
+            <div className="min-w-0 flex flex-col gap-1">
             <span>
               <span className="font-semibold text-ink">{c.donation.productName}</span>
               <span className="text-muted"> · {fmtPallets(c.pallets)} · {fmtKg(c.pallets * c.donation.weightPerPallet)}</span>
@@ -160,6 +162,7 @@ export function OrderCard({ order, now: nowIso, readOnly = false }: { order: Tra
               <TempPill value={c.donation.temperatureRange} />
               <span>→ {c.foodbank.organizationName}</span>
             </span>
+            </div>
           </li>
         ))}
       </ul>

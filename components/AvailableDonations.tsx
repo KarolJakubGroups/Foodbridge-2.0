@@ -6,7 +6,8 @@ import { callAction } from '@/lib/call-action';
 import type { DonationWithDonor } from '@/lib/types';
 import { categoryLabel, fmtBestBefore, fmtKg, fmtPallets, fmtWindow, tempShort } from '@/lib/format';
 import { claimDeadline, claimDeadlineReason, remainingPallets } from '@/lib/domain';
-import { Alert, EmptyState, PalletBar, Pill, TempPill, btn, chipCls, inputCls } from '@/components/ui';
+import { Alert, EmptyState, FoodPhoto, Monogram, PalletBar, PhotoPill, TempPill, btn, chipCls, inputCls } from '@/components/ui';
+import { foodImage } from '@/lib/images';
 import { CalendarIcon, ClockIcon, MapPinIcon, MinusIcon, PlusIcon, SearchIcon } from '@/components/icons';
 import { ClaimCountdown } from '@/components/ClaimCountdown';
 import { useNow } from '@/components/useNow';
@@ -28,7 +29,7 @@ function town(address: string): string {
 /** Available weight of what is still free. */
 const freeKg = (d: DonationWithDonor) => remainingPallets(d) * d.weightPerPallet;
 
-const stepBtn = 'inline-flex size-12 shrink-0 items-center justify-center rounded-xl border border-control bg-white text-ink hover:bg-sand disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-700/25';
+const stepBtn = 'inline-flex size-12 shrink-0 items-center justify-center rounded-full border border-control bg-white text-ink hover:bg-sand disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-700/25';
 const stepInput = 'h-12 w-16 shrink-0 rounded-xl border border-control bg-white text-center text-lg font-bold tabular-nums text-ink focus:outline-none focus:border-brand-700 focus:ring-4 focus:ring-brand-700/15';
 
 function PalletStepper({ value, max, onChange, disabled }: { value: number; max: number; onChange: (n: number) => void; disabled: boolean }) {
@@ -134,7 +135,9 @@ export function AvailableDonations({ donations, now: nowIso }: { donations: Dona
               Alle · {donations.length}
             </button>
             {categories.map(([c, n]) => (
-              <button key={c} type="button" aria-pressed={category === c} className={`${chipCls(category === c)} h-10`} onClick={() => setCategory(category === c ? '' : c)}>
+              <button key={c} type="button" aria-pressed={category === c} className={`${chipCls(category === c)} h-10 pl-1.5`} onClick={() => setCategory(category === c ? '' : c)}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={foodImage({ productName: '', category: c })} alt="" className="size-7 rounded-full object-cover" />
                 {categoryLabel(c)} · {n}
               </button>
             ))}
@@ -145,7 +148,7 @@ export function AvailableDonations({ donations, now: nowIso }: { donations: Dona
       {message && <Alert kind={message.kind} onClose={() => setMessage(null)}>{message.text}</Alert>}
 
       {rows.length === 0 ? (
-        <div className="bg-white border border-line rounded-2xl">
+        <div className="bg-white rounded-3xl shadow-card">
           <EmptyState icon={<SearchIcon className="size-6" />}
             title={donations.length === 0 ? 'Gerade keine Angebote' : 'Keine passenden Angebote'}>
             {donations.length === 0
@@ -162,24 +165,33 @@ export function AvailableDonations({ donations, now: nowIso }: { donations: Dona
             const deadline = claimDeadline(d);
             const closed = deadline.getTime() <= nowMs;
             return (
-              <li key={d.id} className={`bg-white border border-line rounded-2xl p-5 md:p-6 flex flex-col gap-3 ${closed ? 'opacity-70' : ''}`}>
-                <div className="flex flex-wrap gap-2">
-                  <TempPill value={d.temperatureRange} />
-                  <Pill>{categoryLabel(d.category)}</Pill>
-                </div>
-                <h3 className="text-xl font-bold text-ink">{d.productName}</h3>
-                <span className="flex items-center gap-1.5 text-[15px] text-muted">
-                  <MapPinIcon className="size-4 shrink-0" />{d.donor.organizationName} · {town(d.pickupAddress)}
-                </span>
-                <div className="flex flex-col gap-1.5">
-                  <div className="flex items-baseline gap-2.5">
-                    <span className="font-display text-3xl font-bold text-ink tabular-nums">{fmtKg(freeKg(d))}</span>
-                    <span className="text-[15px] text-muted">
-                      {d.claimedPallets > 0 ? `${left} von ${fmtPallets(d.numberOfPallets)} frei` : fmtPallets(d.numberOfPallets)}
-                    </span>
+              <li key={d.id} className={`bg-white rounded-3xl shadow-card overflow-hidden flex flex-col transition-shadow hover:shadow-lift ${closed ? 'opacity-70' : ''}`}>
+                <div className="relative h-44 shrink-0">
+                  <FoodPhoto item={d} alt={d.productName} className="absolute inset-0 size-full" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-black/5 to-transparent" />
+                  <div className="absolute top-3 left-3 right-3 flex flex-wrap gap-1.5">
+                    <TempPill value={d.temperatureRange} />
+                    <PhotoPill>{categoryLabel(d.category)}</PhotoPill>
                   </div>
-                  {d.claimedPallets > 0 && <PalletBar claimed={d.claimedPallets} total={d.numberOfPallets} />}
+                  <div className="absolute bottom-3 left-4 right-4 flex items-center gap-2.5 text-white">
+                    <Monogram name={d.donor.organizationName} size="sm" ring />
+                    <span className="min-w-0 truncate text-[15px] font-semibold">{d.donor.organizationName}</span>
+                  </div>
                 </div>
+                <div className="p-5 flex flex-col gap-3 flex-1">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <h3 className="text-lg font-bold tracking-[-0.01em] text-ink">{d.productName}</h3>
+                    <span className="flex items-center gap-1 text-sm text-muted"><MapPinIcon className="size-3.5 shrink-0" />{town(d.pickupAddress)}</span>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <div className="text-xl font-bold text-brand-700 tabular-nums">{fmtKg(freeKg(d))}</div>
+                    <div className="text-[13px] text-muted whitespace-nowrap">
+                      {d.claimedPallets > 0 ? `${left} von ${d.numberOfPallets} frei` : fmtPallets(d.numberOfPallets)}
+                    </div>
+                  </div>
+                </div>
+                {d.claimedPallets > 0 && <PalletBar claimed={d.claimedPallets} total={d.numberOfPallets} />}
                 <div className="flex flex-col gap-1.5 text-[15px] text-ink-2">
                   <span className="flex items-center gap-2">
                     <CalendarIcon className="size-4 shrink-0 text-subtle" />Abholung {fmtWindow(d.overlapStart, d.overlapEnd, now)}
@@ -213,6 +225,7 @@ export function AvailableDonations({ donations, now: nowIso }: { donations: Dona
                       {closed ? 'Nicht mehr reservierbar' : 'Reservieren'}
                     </button>
                   )}
+                </div>
                 </div>
               </li>
             );

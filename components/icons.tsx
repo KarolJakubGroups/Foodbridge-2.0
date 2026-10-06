@@ -92,3 +92,4 @@ export const MapIcon = (p: IconProps) => (
     <path d="M15 5.76v15M9 3.24v15" />
   </Svg>
 );
+export const BridgeIcon = (p: IconProps) => <Svg {...p}><path d="M2 17h20M5 17v-4a7 7 0 0 1 14 0v4M12 6v11" /></Svg>;

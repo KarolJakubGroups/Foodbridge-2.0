@@ -34,12 +34,12 @@ export function LoginForm() {
         </Field>
         <button className={`${btn('primary')} w-full`} disabled={pending}>{pending ? 'Wird angemeldet…' : 'Anmelden'}</button>
       </form>
-      <details className="rounded-xl bg-sand px-4 py-3">
+      <details className="rounded-2xl bg-sand px-4 py-3">
         <summary className="cursor-pointer text-[15px] font-semibold text-ink-2">Demo-Konten (Passwort: {DEMO_PASSWORD})</summary>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3">
           {DEMO_ACCOUNTS.map((a) => (
             <button key={a.username} type="button" onClick={() => quickLogin(a.email)} disabled={pending}
-              className="text-left rounded-lg border border-control bg-white px-3 py-2.5 hover:bg-canvas disabled:opacity-50">
+              className="text-left rounded-2xl border border-control bg-white px-3.5 py-3 hover:border-brand-700 hover:bg-brand-50 disabled:opacity-50">
               <div className="text-[15px] font-semibold text-ink">{ROLE_LABEL[a.role]}</div>
               <div className="text-sm text-muted truncate">{a.organizationName}</div>
             </button>

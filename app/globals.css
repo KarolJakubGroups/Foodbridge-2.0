@@ -1,29 +1,36 @@
 @import "tailwindcss";
 
 @theme inline {
-  --font-sans: var(--font-figtree), ui-sans-serif, system-ui, sans-serif;
-  --font-display: var(--font-bricolage), var(--font-figtree), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-dm-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-dm-sans), ui-sans-serif, system-ui, sans-serif;
 }
 
-/* FoodBridge palette: warm neutrals, one green for the main action. */
+/*
+ * FoodBridge palette: calm warm neutrals, Schweizer Tafel violet for the one main
+ * action per screen, colour otherwise only where it carries meaning (status, cold chain).
+ */
 @theme {
-  --color-brand-50: #e6f2ea;
-  --color-brand-700: #1d6b45;
-  --color-brand-800: #14532d;
-  --color-brand-900: #0f3f22;
-  --color-canvas: #f6f4ef;
-  --color-sand: #faf8f4;
-  --color-line: #e4e0d6;
-  --color-line-soft: #eeeae1;
-  --color-control: #d9d4c7;
-  --color-ink: #1c1b18;
-  --color-ink-2: #3f3b33;
-  --color-muted: #57534a;
-  --color-subtle: #6b6558;
+  --color-brand-50: #f3f0fa;
+  --color-brand-100: #e7e0f5;
+  --color-brand-700: #4a2695;
+  --color-brand-800: #3b1e78;
+  --color-brand-900: #2b1660;
+  --color-accent: #ffcf00;
+  --color-canvas: #f7f7f5;
+  --color-sand: #f4f3f0;
+  --color-line: #e8e7e3;
+  --color-line-soft: #f0efeb;
+  --color-control: #dedcd6;
+  --color-ink: #1b1a1f;
+  --color-ink-2: #3d3c44;
+  --color-muted: #5f5e66;
+  --color-subtle: #6b6a72;
+  --shadow-card: 0 1px 3px rgba(20, 18, 30, 0.07), 0 6px 20px rgba(20, 18, 30, 0.05);
+  --shadow-lift: 0 2px 6px rgba(20, 18, 30, 0.08), 0 14px 32px rgba(20, 18, 30, 0.1);
 }
 
 body {
-  @apply bg-canvas text-ink font-sans;
+  @apply bg-canvas text-ink font-sans antialiased;
 }
 
 @media print {
