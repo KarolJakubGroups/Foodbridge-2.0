@@ -10,8 +10,8 @@ const order = {
   pickupEnd: new Date('2026-09-26T10:00:00.000Z'),
   donor: { organizationName: 'Migros Zürich', address: 'Limmatstrasse 152, 8005 Zürich', contactName: 'A. Muster', phone: '044 000 00 00' },
   claims: [
-    { id: 1, pallets: 2, donation: { productName: 'Milch', category: 'DAIRY_EGGS', temperatureRange: 'CHILLED', weightPerPallet: 50, bestBeforeDate: '2026-10-01', pickupAddress: 'Limmatstrasse 152, 8005 Zürich' }, foodbank: { organizationName: 'Tafel Zürich', address: 'Hohlstrasse 400, 8048 Zürich' } },
-    { id: 2, pallets: 1, donation: { productName: 'Brot', category: 'BAKERY', temperatureRange: 'AMBIENT', weightPerPallet: 20.5, bestBeforeDate: '2026-09-27', pickupAddress: 'Limmatstrasse 152, 8005 Zürich' }, foodbank: { organizationName: 'Tafel Winterthur', address: 'Zürcherstrasse 1, 8400 Winterthur' } },
+    { id: 1, pallets: 2, palletNumbers: [2, 3], weightKg: 100, donation: { productName: 'Milch', category: 'DAIRY_EGGS', temperatureRange: 'CHILLED', palletWeights: [40, 45, 55], bestBeforeDate: '2026-10-01', pickupAddress: 'Limmatstrasse 152, 8005 Zürich' }, foodbank: { organizationName: 'Tafel Zürich', address: 'Hohlstrasse 400, 8048 Zürich' } },
+    { id: 2, pallets: 1, palletNumbers: [1], weightKg: 20.5, donation: { productName: 'Brot', category: 'BAKERY', temperatureRange: 'AMBIENT', palletWeights: [20.5], bestBeforeDate: '2026-09-27', pickupAddress: 'Limmatstrasse 152, 8005 Zürich' }, foodbank: { organizationName: 'Tafel Winterthur', address: 'Zürcherstrasse 1, 8400 Winterthur' } },
   ],
 };
 
@@ -23,6 +23,7 @@ describe('buildGallikerPayload', () => {
     expect(p.items.map((i) => [i.product, i.pallets, i.weightKg, i.deliverTo.institution])).toEqual([
       ['Milch', 2, 100, 'Tafel Zürich'], ['Brot', 1, 20.5, 'Tafel Winterthur'],
     ]);
+    expect(p.items.map((i) => i.palletWeightsKg)).toEqual([[45, 55], [20.5]]);
     expect(p.totals).toEqual({ pallets: 3, weightKg: 120.5, stops: 2 });
     expect(p.temperatureRequirement).toBe('CHILLED');
   });

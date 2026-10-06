@@ -99,6 +99,14 @@ export function fmtCount(n: number, singular: string, plural: string): string {
 
 export const fmtPallets = (n: number) => fmtCount(n, 'Palette', 'Paletten');
 
+/** "3 Paletten à 250 kg" when every pallet weighs the same, else "3 Paletten · 820 kg". */
+export function fmtPalletLoad(weights: readonly number[]): string {
+  const same = weights.length > 1 && weights.every((w) => w === weights[0]);
+  return same
+    ? `${fmtPallets(weights.length)} à ${fmtKg(weights[0])}`
+    : `${fmtPallets(weights.length)} · ${fmtKg(weights.reduce((s, w) => s + w, 0))}`;
+}
+
 /** Whole days from today (Zurich) until a YYYY-MM-DD date; negative when past. */
 export function daysUntil(isoDate: string, now: Date): number {
   const [d, m, y] = fmtDateOfInstant(now).split('.').map(Number);

@@ -1,8 +1,8 @@
-import type { Claim, Donation, GallikerTransmission, TransportOrder, User, Wishlist } from '@/lib/generated/prisma/client';
+import type { Claim, Donation, GallikerTransmission, TransportOrder, User } from '@/lib/generated/prisma/client';
 import type { Category, Role, TemperatureRange, UserStatus } from '@/lib/domain';
 
 export type { Category, ClaimStatus, Role, TemperatureRange, DonationStatus, TransportStatus, UserStatus } from '@/lib/domain';
-export type { Claim, Donation, GallikerTransmission, TransportOrder, Wishlist };
+export type { Claim, Donation, GallikerTransmission, TransportOrder };
 
 export type UserSummary = Pick<User, 'id' | 'username' | 'organizationName' | 'address'>;
 export type Profile = UserSummary & { email: string; role: Role; status: UserStatus };
@@ -21,12 +21,14 @@ export interface RegistrationInput {
 }
 
 export type DonationWithDonor = Donation & { donor: UserSummary };
+/** An offer as institutions see it: which pallets are already taken. */
+export type AvailableDonation = DonationWithDonor & { claims: Pick<Claim, 'palletNumbers'>[] };
 
 /** Pickup window of a transport order as the other roles see it. */
 export type OrderWindow = { id: number; pickupStart: Date; pickupEnd: Date; status: string };
 
 /** One reservation on an own donation: who took how many pallets, and where the transport stands. */
-export type DonorClaim = Pick<Claim, 'id' | 'pallets' | 'status' | 'claimedAt'> & {
+export type DonorClaim = Pick<Claim, 'id' | 'pallets' | 'palletNumbers' | 'weightKg' | 'status' | 'claimedAt'> & {
   foodbank: { organizationName: string };
   transportOrder: OrderWindow | null;
 };
@@ -46,7 +48,6 @@ export type TransportOrderWithDetails = TransportOrder & {
   /** Latest message sent to Galliker, if any. */
   transmissions: GallikerTransmission[];
 };
-export type WishlistWithFoodbank = Wishlist & { foodbank: UserSummary };
 
 /** Payload of the donor form: the 7 mandatory fields of the spec plus the product category. */
 export interface DonationInput {
@@ -56,24 +57,18 @@ export interface DonationInput {
   temperatureRange: TemperatureRange | (string & {});
   bestBeforeDate: string; // YYYY-MM-DD
   pickupAddress: string;
-  numberOfPallets: number;
-  weightPerPallet: number;
+  /** Weight of each pallet in kg; its length is the number of pallets. */
+  palletWeights: number[];
   overlapStart: string; // ISO instant
   overlapEnd: string; // ISO instant
 }
 
-export interface WishlistInput {
-  productName: string;
-  quantityKg: number;
-  note: string;
-}
-
 /** Values copied into the donor form when an old offer is registered again. */
-export type DonationPrefill = Pick<Donation, 'productName' | 'category' | 'temperatureRange' | 'numberOfPallets' | 'weightPerPallet'>;
+export type DonationPrefill = Pick<Donation, 'productName' | 'category' | 'temperatureRange' | 'palletWeights'>;
 
 /** An own, still-open offer a donor could add pallets to instead of registering a duplicate. */
 export type OpenDonation = Pick<Donation, 'id' | 'productName' | 'category' | 'temperatureRange'
-  | 'numberOfPallets' | 'weightPerPallet' | 'bestBeforeDate' | 'overlapStart' | 'overlapEnd' | 'createdAt'>;
+  | 'numberOfPallets' | 'palletWeights' | 'bestBeforeDate' | 'overlapStart' | 'overlapEnd' | 'createdAt'>;
 
 /** One reservation as shown in the bundling preview. `id` is the claim id. */
 export interface PlannedClaim {
@@ -82,7 +77,7 @@ export interface PlannedClaim {
   category: string;
   temperatureRange: string;
   pallets: number;
-  weightPerPallet: number;
+  weightKg: number;
   overlapStart: Date;
   overlapEnd: Date;
   foodbankName: string;

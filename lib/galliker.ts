@@ -32,7 +32,7 @@ export function gallikerConfig(env: Record<string, string | undefined> = process
 }
 
 /** Version of the message format, so Galliker can evolve its parser. */
-export const PAYLOAD_VERSION = '1.0';
+export const PAYLOAD_VERSION = '1.1';
 
 export interface GallikerOrderPayload {
   version: string;
@@ -55,6 +55,8 @@ export interface GallikerOrderPayload {
     storage: string;
     pallets: number;
     weightKg: number;
+    /** Weight of each pallet in kg (since 1.1): pallets of one product may weigh differently. */
+    palletWeightsKg: number[];
     bestBefore: string;
     deliverTo: { institution: string; address: string };
   }[];
@@ -70,7 +72,9 @@ interface OrderForPayload {
   claims: {
     id: number;
     pallets: number;
-    donation: { productName: string; category: string; temperatureRange: string; weightPerPallet: number; bestBeforeDate: string; pickupAddress: string };
+    palletNumbers: number[];
+    weightKg: number;
+    donation: { productName: string; category: string; temperatureRange: string; palletWeights: number[]; bestBeforeDate: string; pickupAddress: string };
     foodbank: { organizationName: string; address: string };
   }[];
 }
@@ -94,7 +98,8 @@ export function buildGallikerPayload(order: OrderForPayload): GallikerOrderPaylo
     category: c.donation.category,
     storage: c.donation.temperatureRange,
     pallets: c.pallets,
-    weightKg: Math.round(c.pallets * c.donation.weightPerPallet * 10) / 10,
+    weightKg: Math.round(c.weightKg * 10) / 10,
+    palletWeightsKg: c.palletNumbers.map((n) => c.donation.palletWeights[n - 1]),
     bestBefore: c.donation.bestBeforeDate,
     deliverTo: { institution: c.foodbank.organizationName, address: c.foodbank.address },
   }));

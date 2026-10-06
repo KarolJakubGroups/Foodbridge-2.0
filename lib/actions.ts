@@ -14,10 +14,10 @@ import { coordinatesFor } from '@/lib/geo';
 import { ROLE_HOME } from '@/lib/format';
 import type { Profile } from '@/lib/types';
 import type {
-  ActionResult, BundleRequest, BundlingResult, DonationInput, PlannedGroup, RegistrationInput, WishlistInput,
+  ActionResult, BundleRequest, BundlingResult, DonationInput, PlannedGroup, RegistrationInput,
 } from '@/lib/types';
 
-const APP_PATHS = ['/donor', '/foodbank', '/dispatcher', '/dispatcher/map', '/network', '/wishlist'];
+const APP_PATHS = ['/donor', '/foodbank', '/dispatcher', '/dispatcher/map', '/network'];
 
 /** Looks up an address for the dispatcher map after the response is sent; failures only mean a later lookup. */
 function prepareMapLocation(address: string) {
@@ -115,10 +115,10 @@ export async function createDonation(input: DonationInput): Promise<ActionResult
   });
 }
 
-/** Adds pallets to an existing open offer of the same donor. */
-export async function addPallets(donationId: number, additionalPallets: number):
+/** Adds pallets (one weight each) to an existing open offer of the same donor. */
+export async function addPallets(donationId: number, palletWeights: number[]):
   Promise<ActionResult<{ productName: string; numberOfPallets: number; totalWeightKg: number }>> {
-  return run((p) => services.addPalletsToDonation(p, donationId, additionalPallets));
+  return run((p) => services.addPalletsToDonation(p, donationId, palletWeights));
 }
 
 /** Pulls back the unreserved pallets of an own offer. */
@@ -128,10 +128,11 @@ export async function withdrawDonation(donationId: number):
 }
 
 // ---------------------------------------------------------------- claims
-export async function claimDonation(donationId: number, pallets: number):
+/** Reserves a number of pallets (the next free ones) or specific pallets by number. */
+export async function claimDonation(donationId: number, selection: number | number[]):
   Promise<ActionResult<{ productName: string; remainingPallets: number; weightKg: number }>> {
   return run(async (p) => {
-    const r = await services.claimDonation(p, donationId, pallets);
+    const r = await services.claimDonation(p, donationId, selection);
     return { productName: r.productName, remainingPallets: r.remainingPallets, weightKg: r.weightKg };
   });
 }
@@ -153,13 +154,4 @@ export async function resendToGalliker(orderId: number): Promise<ActionResult<{ 
 
 export async function setOrderStatus(orderId: number, status: TransportStatus): Promise<ActionResult> {
   return run(async (p) => { await services.setOrderStatus(p, orderId, status); });
-}
-
-// ------------------------------------------------------------- wishlists
-export async function createWishlist(input: WishlistInput): Promise<ActionResult> {
-  return run(async (p) => { await services.createWishlist(p, input); }, ['/wishlist', '/donor']);
-}
-
-export async function deleteWishlist(id: number): Promise<ActionResult> {
-  return run(async (p) => { await services.deleteWishlist(p, id); }, ['/wishlist', '/donor']);
 }

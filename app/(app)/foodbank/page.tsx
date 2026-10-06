@@ -52,7 +52,7 @@ export default async function FoodbankPage() {
                       <div className="min-w-0 flex-1 flex flex-col gap-1.5">
                       <div className="flex items-baseline justify-between gap-3">
                         <span className="text-base font-semibold text-ink">{c.donation.productName}</span>
-                        <span className="text-[15px] text-muted tabular-nums whitespace-nowrap">{fmtKg(c.pallets * c.donation.weightPerPallet)}</span>
+                        <span className="text-[15px] text-muted tabular-nums whitespace-nowrap">{fmtKg(c.weightKg)}</span>
                       </div>
                       <span className="text-sm text-muted">
                         {c.donation.donor.organizationName} · {fmtPallets(c.pallets)}{partOfOffer ? ` von ${c.donation.numberOfPallets}` : ''}

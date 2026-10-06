@@ -4,6 +4,8 @@ import { claimDeadline, donationState, remainingPallets, type DonationState } fr
 /** Minimal shape the donor dashboard needs; kept structural so it can be unit-tested without a database. */
 export interface DashboardClaim {
   pallets: number;
+  palletNumbers: number[];
+  weightKg: number;
   status: string;
   claimedAt: Date;
   foodbank: { organizationName: string };
@@ -17,7 +19,7 @@ export interface DashboardDonation {
   status: string;
   numberOfPallets: number;
   claimedPallets: number;
-  weightPerPallet: number;
+  palletWeights: number[];
   bestBeforeDate: string;
   createdAt: Date;
   overlapEnd: Date;
@@ -81,10 +83,9 @@ export function buildDonorDashboard(donations: DashboardDonation[], now = new Da
       const entry = openOrders.get(o.id) ?? {
         orderId: o.id, pickupStart: o.pickupStart, pickupEnd: o.pickupEnd, status: o.status, items: [], totalPallets: 0, totalWeightKg: 0,
       };
-      const weightKg = c.pallets * d.weightPerPallet;
-      entry.items.push({ productName: d.productName, pallets: c.pallets, weightKg });
+      entry.items.push({ productName: d.productName, pallets: c.pallets, weightKg: c.weightKg });
       entry.totalPallets += c.pallets;
-      entry.totalWeightKg += weightKg;
+      entry.totalWeightKg += c.weightKg;
       openOrders.set(o.id, entry);
     }
   }
@@ -92,7 +93,7 @@ export function buildDonorDashboard(donations: DashboardDonation[], now = new Da
 
   // Impact: reserved pallets only, attributed to the month they were reserved in.
   const rescued = donations.flatMap((d) => d.claims.map((c) => ({
-    numberOfPallets: c.pallets, weightPerPallet: d.weightPerPallet, category: d.category, claimedAt: c.claimedAt,
+    weightKg: c.weightKg, category: d.category, claimedAt: c.claimedAt,
   })));
   const thisKey = monthKey(now);
   const impact = {
@@ -106,7 +107,7 @@ export function buildDonorDashboard(donations: DashboardDonation[], now = new Da
   }
 
   const byCategory = new Map<string, number>();
-  for (const r of rescued) byCategory.set(r.category, (byCategory.get(r.category) ?? 0) + r.numberOfPallets * r.weightPerPallet);
+  for (const r of rescued) byCategory.set(r.category, (byCategory.get(r.category) ?? 0) + r.weightKg);
   const topCategories = [...byCategory.entries()]
     .map(([category, totalWeightKg]) => ({ category, totalWeightKg }))
     .sort((a, b) => b.totalWeightKg - a.totalWeightKg)

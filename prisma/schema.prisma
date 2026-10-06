@@ -28,7 +28,6 @@ model User {
   donations       Donation[]       @relation("DonorDonations")
   claims          Claim[]          @relation("FoodbankClaims")
   transportOrders TransportOrder[] @relation("DonorOrders")
-  wishlists       Wishlist[]       @relation("FoodbankWishlists")
 }
 
 model Session {
@@ -55,7 +54,8 @@ model Donation {
   numberOfPallets  Int
   /// Pallets reserved by institutions so far (sum of claims.pallets); never above numberOfPallets.
   claimedPallets   Int      @default(0)
-  weightPerPallet  Float
+  /// Weight of every pallet in kg, pallet 1 first; always numberOfPallets entries (pallets need not weigh the same).
+  palletWeights    Float[]
   overlapStart     DateTime // pickup window start
   overlapEnd       DateTime // pickup window end
   /// AVAILABLE (pallets left) | CLAIMED (fully reserved) | WITHDRAWN. Logistics state lives on the claims.
@@ -76,6 +76,10 @@ model Claim {
   foodbankId       String
   foodbank         User            @relation("FoodbankClaims", fields: [foodbankId], references: [id])
   pallets          Int
+  /// Which pallets of the donation (1-based numbers into donation.palletWeights); `pallets` entries.
+  palletNumbers    Int[]
+  /// Total weight of those pallets in kg, fixed when reserved.
+  weightKg         Float
   /// RESERVED (waiting for a transport) | BUNDLED (in a transport order) | COMPLETED (delivered)
   status           String          @default("RESERVED")
   transportOrderId Int?
@@ -130,17 +134,6 @@ model GallikerTransmission {
   createdAt  DateTime       @default(now())
 
   @@index([orderId, createdAt])
-}
-
-/// A published need of a social institution.
-model Wishlist {
-  id          Int      @id @default(autoincrement())
-  foodbankId  String
-  foodbank    User     @relation("FoodbankWishlists", fields: [foodbankId], references: [id])
-  productName String
-  quantityKg  Float
-  note        String?
-  createdAt   DateTime @default(now())
 }
 
 /// Geocoding cache for the dispatcher map (lib/geo.ts). Keyed by the normalised address text;

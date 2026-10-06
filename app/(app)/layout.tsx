@@ -13,19 +13,16 @@ const NAV: Record<Role, NavItem[]> = {
   DONOR: [
     { href: '/donor', label: 'Übersicht', short: 'Übersicht', icon: 'home' },
     { href: '/network', label: 'Meine Transporte', short: 'Transporte', icon: 'truck' },
-    { href: '/wishlist', label: 'Gesuchte Produkte', short: 'Gesucht', icon: 'search' },
   ],
   FOODBANK: [
     { href: '/foodbank', label: 'Lebensmittel finden', short: 'Finden', icon: 'search' },
     { href: '/network', label: 'Meine Lieferungen', short: 'Lieferungen', icon: 'truck' },
-    { href: '/wishlist', label: 'Bedarf melden', short: 'Bedarf', icon: 'list' },
     { href: '/applications', label: 'Spender-Anträge', short: 'Anträge', icon: 'userCheck' },
   ],
   DISPATCHER: [
     { href: '/dispatcher', label: 'Transporte planen', short: 'Planen', icon: 'layers' },
     { href: '/dispatcher/map', label: 'Karte', short: 'Karte', icon: 'map' },
     { href: '/network', label: 'Netzwerk & Wirkung', short: 'Netzwerk', icon: 'chart' },
-    { href: '/wishlist', label: 'Gesuchte Produkte', short: 'Gesucht', icon: 'list' },
   ],
 };
 

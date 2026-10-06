@@ -19,7 +19,7 @@ export default async function NewDonationPage({ searchParams }: PageProps<'/dono
     .filter((d) => d.status === 'AVAILABLE' && d.createdAt > cutoff)
     .map((d) => ({
       id: d.id, productName: d.productName, category: d.category, temperatureRange: d.temperatureRange,
-      numberOfPallets: d.numberOfPallets, weightPerPallet: d.weightPerPallet, bestBeforeDate: d.bestBeforeDate,
+      numberOfPallets: d.numberOfPallets, palletWeights: d.palletWeights, bestBeforeDate: d.bestBeforeDate,
       overlapStart: d.overlapStart, overlapEnd: d.overlapEnd, createdAt: d.createdAt,
     }));
 
@@ -27,7 +27,7 @@ export default async function NewDonationPage({ searchParams }: PageProps<'/dono
   const source = typeof from === 'string' ? donations.find((d) => d.id === Number(from)) : undefined;
   const prefill: DonationPrefill | undefined = source && {
     productName: source.productName, category: source.category, temperatureRange: source.temperatureRange,
-    numberOfPallets: source.numberOfPallets, weightPerPallet: source.weightPerPallet,
+    palletWeights: source.palletWeights,
   };
 
   return (

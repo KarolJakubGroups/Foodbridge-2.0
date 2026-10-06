@@ -3,6 +3,7 @@
  *
  * The data shows every feature on first login:
  *   - a partial reservation (Milch: 1 of 2 pallets reserved, 1 still free)
+ *   - an offer whose pallets weigh differently (Tiefkühl-Gemüse), so institutions pick pallets
  *   - a transport order with two delivery stops (Zürich and Winterthur), already sent to Galliker's test connection
  *   - reservations waiting for bundling, an expired offer, and a 5-day-old offer hidden by the 4-day rule
  * Coordinates of the demo addresses are cached so the dispatcher map works without a geocoding call.
@@ -66,19 +67,26 @@ async function main() {
 
   const { migros, coop, foodbank_zrh: zrh, foodbank_win: win } = users;
   const offer = async (donor: { id: string; address: string }, productName: string, category: string, temperatureRange: string,
-    bestBeforeInDays: number, numberOfPallets: number, weightPerPallet: number, start: Date, end: Date, createdAt: Date,
+    bestBeforeInDays: number, numberOfPallets: number, weight: number | number[], start: Date, end: Date, createdAt: Date,
     claims: { foodbank: { id: string }; pallets: number }[] = []) => {
+    // One weight for every pallet, or each pallet's own weight.
+    const palletWeights = Array.isArray(weight) ? weight : Array.from({ length: numberOfPallets }, () => weight);
     const claimedPallets = claims.reduce((s, c) => s + c.pallets, 0);
     const d = await prisma.donation.create({
       data: {
         donorId: donor.id, productName, category, temperatureRange, bestBeforeDate: dateIn(bestBeforeInDays), pickupAddress: donor.address,
-        numberOfPallets, weightPerPallet, overlapStart: start, overlapEnd: end, createdAt,
+        numberOfPallets, palletWeights, overlapStart: start, overlapEnd: end, createdAt,
         claimedPallets, status: claimedPallets === numberOfPallets ? 'CLAIMED' : 'AVAILABLE',
       },
     });
     const created = [];
+    let next = 1; // claims take the pallets in order
     for (const c of claims) {
-      created.push(await prisma.claim.create({ data: { donationId: d.id, foodbankId: c.foodbank.id, pallets: c.pallets, claimedAt: hoursAgo(2) } }));
+      const palletNumbers = Array.from({ length: c.pallets }, () => next++);
+      const weightKg = palletNumbers.reduce((s, n) => s + palletWeights[n - 1], 0);
+      created.push(await prisma.claim.create({
+        data: { donationId: d.id, foodbankId: c.foodbank.id, pallets: c.pallets, palletNumbers, weightKg, claimedAt: hoursAgo(2) },
+      }));
     }
     return { donation: d, claims: created };
   };
@@ -96,7 +104,8 @@ async function main() {
   await offer(coop, 'Bananen', 'FRUIT_VEG', 'CHILLED', 6, 1, 30, days(2, 7), days(2, 15), hoursAgo(24), [{ foodbank: win, pallets: 1 }]);
   // Partial reservation: 1 of 2 pallets taken, the other still available.
   await offer(coop, 'Milch UHT 1l', 'DAIRY_EGGS', 'CHILLED', 20, 2, 50, days(1, 7), days(3, 17), hoursAgo(6), [{ foodbank: zrh, pallets: 1 }]);
-  await offer(coop, 'Tiefkühl-Gemüse', 'READY_MEALS', 'FROZEN', 90, 3, 250, days(2, 7), days(2, 12), hoursAgo(1));
+  // Pallets of different weight: institutions choose which ones they take.
+  await offer(coop, 'Tiefkühl-Gemüse', 'READY_MEALS', 'FROZEN', 90, 3, [280, 240, 190], days(2, 7), days(2, 12), hoursAgo(1));
   // Older than 4 days -> hidden from institutions by the freshness rule (TF-03).
   await offer(coop, 'Joghurt Nature', 'DAIRY_EGGS', 'CHILLED', 5, 1, 60, days(1, 7), days(2, 17), hoursAgo(5 * 24));
 
@@ -111,13 +120,7 @@ async function main() {
   });
   await prisma.claim.updateMany({ where: { id: { in: bundled.map((c) => c.id) } }, data: { status: 'BUNDLED', transportOrderId: order.id } });
 
-  await prisma.wishlist.createMany({
-    data: [
-      { foodbankId: zrh.id, productName: 'Reis', quantityKg: 200, note: 'Langkornreis, Raumtemperatur', createdAt: hoursAgo(24) },
-      { foodbankId: win.id, productName: 'Milchprodukte', quantityKg: 100, note: 'Joghurt, Käse (gekühlt)', createdAt: hoursAgo(5) },
-    ],
-  });
-  console.log('seeded 9 offers, 7 reservations (one partial), 1 transport order with two stops, 2 needs');
+  console.log('seeded 9 offers, 7 reservations (one partial), 1 transport order with two stops');
 }
 
 main().catch((e) => { console.error(e); process.exit(1); }).finally(() => prisma.$disconnect());
