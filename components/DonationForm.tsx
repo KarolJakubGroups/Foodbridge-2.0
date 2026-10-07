@@ -11,6 +11,7 @@ import {
 import { FRESHNESS_DAYS, MAX_TEMPERATURE_LENGTH, normalizeProductName, palletWeightsProblem, totalWeightKg } from '@/lib/domain';
 import { Alert, Field, FoodPhoto, PhotoPill, TempPill, btn, chipCls, inputCls, linkCls } from '@/components/ui';
 import { CheckIcon, InfoIcon, MapPinIcon } from '@/components/icons';
+import { DatePicker, DateTimePicker, Select } from '@/components/pickers';
 import {
   PalletWeightsInput, initialPalletWeights, palletWeightValues, type PalletWeightsState,
 } from '@/components/PalletWeightsInput';
@@ -163,6 +164,7 @@ export function DonationForm({ defaultAddress, organizationName, openDonations, 
     if (mergeTarget) return doMerge(mergeTarget, palletWeights);
     if (!form.category) { scrollUp(); return setError('Bitte wählen Sie eine Warengruppe.'); }
     if (!form.temperatureRange.trim()) { scrollUp(); return setError('Bitte geben Sie an, wie die Ware gelagert werden muss.'); }
+    if (!form.bestBeforeDate) { scrollUp(); return setError('Bitte geben Sie an, bis wann die Ware mindestens haltbar ist.'); }
     if (form.overlapEnd <= form.overlapStart) { scrollUp(); return setError('Das Ende der Abholzeit muss nach dem Beginn liegen.'); }
     // Same product already open: ask before creating a second offer.
     if (suggestion) return setConfirmMatch(suggestion);
@@ -266,17 +268,14 @@ export function DonationForm({ defaultAddress, organizationName, openDonations, 
 
             <div className="grid grid-cols-1 @xl:grid-cols-2 gap-4">
               <Field label="Wie muss es gelagert werden?">
-                <select className={inputCls} required
+                <Select
                   value={customTemperature ? OTHER_TEMPERATURE : form.temperatureRange}
-                  onChange={(e) => {
-                    const other = e.target.value === OTHER_TEMPERATURE;
+                  options={[...TEMPERATURES, { value: OTHER_TEMPERATURE, label: 'Andere Temperatur eingeben…' }]}
+                  onChange={(v) => {
+                    const other = v === OTHER_TEMPERATURE;
                     setCustomTemperature(other);
-                    setValue('temperatureRange', other ? '' : e.target.value);
-                  }}>
-                  <option value="" disabled>Bitte wählen…</option>
-                  {TEMPERATURES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-                  <option value={OTHER_TEMPERATURE}>Andere Temperatur eingeben…</option>
-                </select>
+                    setValue('temperatureRange', other ? '' : v);
+                  }} />
               </Field>
               {customTemperature && (
                 <Field label="Ihre Temperaturangabe" hint="Zum Beispiel «+12 bis +15 °C» oder «trocken, unter +20 °C».">
@@ -296,8 +295,7 @@ export function DonationForm({ defaultAddress, organizationName, openDonations, 
               <label htmlFor="best-before" className="text-base font-semibold text-ink">Mindestens haltbar bis</label>
               <div className="flex flex-wrap items-center gap-2.5">
                 <span className="w-full @md:w-56">
-                  <input id="best-before" type="date" className={inputCls} value={form.bestBeforeDate} onChange={set('bestBeforeDate')}
-                    min={inDays(0)} required />
+                  <DatePicker id="best-before" value={form.bestBeforeDate} onChange={(v) => setValue('bestBeforeDate', v)} min={inDays(0)} />
                 </span>
                 <span className="text-[15px] text-muted px-1">oder schnell wählen:</span>
                 {BEST_BEFORE_QUICK.map((q) => (
@@ -311,10 +309,10 @@ export function DonationForm({ defaultAddress, organizationName, openDonations, 
 
             <div className="grid grid-cols-1 @xl:grid-cols-2 gap-4">
               <Field label="Abholung möglich ab">
-                <input type="datetime-local" className={inputCls} value={form.overlapStart} onChange={set('overlapStart')} required />
+                <DateTimePicker label="Abholung ab" value={form.overlapStart} onChange={(v) => setValue('overlapStart', v)} min={inDays(0)} />
               </Field>
               <Field label="bis">
-                <input type="datetime-local" className={inputCls} value={form.overlapEnd} onChange={set('overlapEnd')} required />
+                <DateTimePicker label="Abholung bis" value={form.overlapEnd} onChange={(v) => setValue('overlapEnd', v)} min={inDays(0)} />
               </Field>
             </div>
 

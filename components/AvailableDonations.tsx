@@ -6,6 +6,7 @@ import { callAction } from '@/lib/call-action';
 import type { AvailableDonation } from '@/lib/types';
 import { categoryLabel, fmtBestBefore, fmtKg, fmtPallets, fmtWindow, tempShort } from '@/lib/format';
 import { claimDeadline, claimDeadlineReason, freePalletNumbers, remainingPallets, uniformWeight, weightOfPallets } from '@/lib/domain';
+import { Select } from '@/components/pickers';
 import { Alert, EmptyState, FoodPhoto, Monogram, PalletBar, PhotoPill, TempPill, btn, chipCls, inputCls } from '@/components/ui';
 import { foodImage } from '@/lib/images';
 import { CalendarIcon, ClockIcon, MapPinIcon, MinusIcon, PlusIcon, SearchIcon } from '@/components/icons';
@@ -128,19 +129,9 @@ export function AvailableDonations({ donations, now: nowIso }: { donations: Avai
             <input type="search" className={`${inputCls} pl-12`} placeholder="Produkt oder Spender suchen" value={query}
               onChange={(e) => setQuery(e.target.value)} />
           </label>
-          <label>
-            <span className="sr-only">Lagerung</span>
-            <select className={inputCls} value={storage} onChange={(e) => setStorage(e.target.value)}>
-              <option value="">Lagerung: alle</option>
-              {storages.map((s) => <option key={s} value={s}>{s}</option>)}
-            </select>
-          </label>
-          <label>
-            <span className="sr-only">Sortierung</span>
-            <select className={inputCls} value={sort} onChange={(e) => setSort(e.target.value as Sort)}>
-              {SORTS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-            </select>
-          </label>
+          <Select aria-label="Lagerung" value={storage} onChange={setStorage}
+            options={[{ value: '', label: 'Lagerung: alle' }, ...storages.map((s) => ({ value: s, label: s }))]} />
+          <Select aria-label="Sortierung" value={sort} onChange={setSort} options={SORTS} />
         </div>
         {categories.length > 1 && (
           <div className="flex flex-wrap gap-2" aria-label="Nach Warengruppe filtern">

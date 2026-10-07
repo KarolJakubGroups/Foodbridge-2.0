@@ -6,7 +6,8 @@ import { callAction } from '@/lib/call-action';
 import { bundleWindow, type PickupWindow } from '@/lib/logistics';
 import type { BundleRequest, PlannedClaim, PlannedGroup } from '@/lib/types';
 import { categoryLabel, fmtCount, fmtKg, fmtPallets, fmtWindow } from '@/lib/format';
-import { Alert, TONE, TempPill, btn, inputCls } from '@/components/ui';
+import { Select } from '@/components/pickers';
+import { Alert, TONE, TempPill, btn } from '@/components/ui';
 
 const NONE = '__none__';
 
@@ -124,12 +125,9 @@ export function BundleButton({ disabled = false }: { disabled?: boolean }) {
                 const keys = keysByDonor[group.key] ?? [];
                 const labelFor = (key: string) => `Fahrt ${keys.indexOf(key) + 1}`;
                 const rowSelect = (c: PlannedClaim) => (
-                  <select className={`${inputCls} h-11 md:w-48`} value={assignment[c.id]} onChange={(e) => move(group.key, c.id, e.target.value)}
-                    aria-label={`Fahrt für ${c.productName}`}>
-                    {keys.map((k) => <option key={k} value={k}>{labelFor(k)}</option>)}
-                    <option value="__new__">Neue Fahrt…</option>
-                    <option value={NONE}>Zurückstellen</option>
-                  </select>
+                  <Select size="sm" className="md:w-48" value={assignment[c.id]} onChange={(v) => move(group.key, c.id, v)}
+                    aria-label={`Fahrt für ${c.productName}`}
+                    options={[...keys.map((k) => ({ value: k, label: labelFor(k) })), { value: '__new__', label: 'Neue Fahrt…' }, { value: NONE, label: 'Zurückstellen' }]} />
                 );
                 const row = (c: PlannedClaim) => (
                   <li key={c.id} className="px-4 py-3.5 flex flex-col md:flex-row md:items-center gap-3">
