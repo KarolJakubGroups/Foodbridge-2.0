@@ -5,11 +5,11 @@ import { Prisma } from '@/lib/generated/prisma/client';
 import { bundleWindow, planTransportOrders } from '@/lib/logistics';
 import { buildGallikerPayload, gallikerConfig, transmitToGalliker, type GallikerConfig, type GallikerResult } from '@/lib/galliker';
 import {
-  CATEGORIES, DomainError, PALLET_MATERIALS, MAX_PACKAGING_UNIT_LENGTH, MAX_PALLETS, MIN_PASSWORD_LENGTH, freePalletNumbers, freshnessCutoff, isClaimable,
+  CATEGORIES, DomainError, MAX_DESCRIPTION_LENGTH, PALLET_MATERIALS, MAX_PACKAGING_UNIT_LENGTH, MAX_PALLETS, MIN_PASSWORD_LENGTH, freePalletNumbers, freshnessCutoff, isClaimable,
   normalizeAddress, normalizeTemperature, palletWeightsProblem, remainingPallets, totalWeightKg, weightOfPallets, type TransportStatus,
 } from '@/lib/domain';
 import type {
-  Application, BundleRequest, BundlingResult, DonationInput, PlannedGroup, Profile, RegistrationInput,
+  Application, BundleRequest, BundlingResult, DonationInput, PlannedGroup, Profile, ProfileDetailsInput, RegistrationInput,
 } from '@/lib/types';
 
 // ---------------------------------------------------------- registration
@@ -70,6 +70,26 @@ export function listApplications(): Promise<Application[]> {
     select: { id: true, username: true, email: true, organizationName: true, address: true, contactName: true, phone: true, status: true, createdAt: true, reviewedAt: true },
     orderBy: [{ status: 'asc' }, { createdAt: 'desc' }],
   }) as Promise<Application[]>;
+}
+
+// --------------------------------------------------------------- profile
+export function getProfileDetails(profile: Profile) {
+  return prisma.user.findUniqueOrThrow({ where: { id: profile.id }, select: { contactName: true, phone: true, description: true } });
+}
+
+/** An organization updates its contact person and, for institutions, the "Wer wir sind" text donors see. */
+export async function updateProfileDetails(profile: Profile, input: ProfileDetailsInput) {
+  const contactName = input.contactName?.trim() ?? '';
+  const phone = input.phone?.trim() ?? '';
+  const description = input.description?.trim() ?? '';
+  if (contactName.length < 2) throw new DomainError('Bitte eine Kontaktperson angeben.');
+  if (contactName.length > 80 || phone.length > 40) throw new DomainError('Kontaktperson oder Telefonnummer ist zu lang.');
+  if (description.length > MAX_DESCRIPTION_LENGTH) throw new DomainError(`Die Beschreibung darf höchstens ${MAX_DESCRIPTION_LENGTH} Zeichen haben.`);
+  return prisma.user.update({
+    where: { id: profile.id },
+    data: { contactName, phone: phone || null, ...(profile.role === 'FOODBANK' ? { description: description || null } : {}) },
+    select: { contactName: true, phone: true, description: true },
+  });
 }
 
 // ------------------------------------------------------------- donations

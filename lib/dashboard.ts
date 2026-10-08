@@ -8,7 +8,7 @@ export interface DashboardClaim {
   weightKg: number;
   status: string;
   claimedAt: Date;
-  foodbank: { organizationName: string };
+  foodbank: { organizationName: string; description?: string | null; contactName?: string | null; phone?: string | null };
   transportOrder: { id: number; pickupStart: Date; pickupEnd: Date; status: string } | null;
 }
 
@@ -47,7 +47,8 @@ export interface DonorDashboard {
   expired: DashboardDonation[];
   impact: { thisMonth: ImpactReport; lastMonth: ImpactReport; total: ImpactReport; deltaPercent: number | null };
   topCategories: { category: string; totalWeightKg: number }[];
-  recipients: string[];
+  /** Institutions that received something, once each, by name. */
+  recipients: DashboardClaim['foodbank'][];
 }
 
 const DAY = 86_400_000;
@@ -113,7 +114,8 @@ export function buildDonorDashboard(donations: DashboardDonation[], now = new Da
     .sort((a, b) => b.totalWeightKg - a.totalWeightKg)
     .slice(0, 3);
 
-  const recipients = [...new Set(donations.flatMap((d) => d.claims.map((c) => c.foodbank.organizationName)))].sort();
+  const byName = new Map(donations.flatMap((d) => d.claims.map((c) => [c.foodbank.organizationName, c.foodbank] as const)));
+  const recipients = [...byName.values()].sort((a, b) => a.organizationName.localeCompare(b.organizationName));
 
   return { counts, nextPickup, expiringSoon, bestBeforeSoon, expired, impact, topCategories, recipients };
 }

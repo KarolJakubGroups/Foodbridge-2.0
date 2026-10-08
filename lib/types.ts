@@ -20,6 +20,11 @@ export interface RegistrationInput {
   passwordConfirm: string;
 }
 
+/** Who receives a donation, as the donor sees it: name, "Wer wir sind" and contact. */
+export type ReceiverInfo = Pick<User, 'organizationName' | 'description' | 'contactName' | 'phone'>;
+/** Whom an institution calls about a pickup. */
+export type ContactInfo = Pick<User, 'contactName' | 'phone'>;
+
 export type DonationWithDonor = Donation & { donor: UserSummary };
 /** An offer as institutions see it: which pallets are already taken. */
 export type AvailableDonation = DonationWithDonor & { claims: Pick<Claim, 'palletNumbers'>[] };
@@ -29,13 +34,21 @@ export type OrderWindow = { id: number; pickupStart: Date; pickupEnd: Date; stat
 
 /** One reservation on an own donation: who took how many pallets, and where the transport stands. */
 export type DonorClaim = Pick<Claim, 'id' | 'pallets' | 'palletNumbers' | 'weightKg' | 'status' | 'claimedAt'> & {
-  foodbank: { organizationName: string };
+  foodbank: ReceiverInfo;
   transportOrder: OrderWindow | null;
 };
 /** Own donation plus its reservations, pickups and receiving institutions. */
 export type DonorDonation = DonationWithDonor & { claims: DonorClaim[] };
 
-export type ClaimWithDonation = Claim & { donation: DonationWithDonor; transportOrder: OrderWindow | null };
+export type ClaimWithDonation = Claim & { donation: Donation & { donor: UserSummary & ContactInfo }; transportOrder: OrderWindow | null };
+
+/** Contact details an organization keeps up to date on /profile. */
+export interface ProfileDetailsInput {
+  contactName: string;
+  phone: string;
+  /** Institutions only. */
+  description: string;
+}
 
 /** A reservation inside a transport order: the goods and where they go. */
 export type OrderLine = Claim & {

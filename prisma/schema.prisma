@@ -21,6 +21,8 @@ model User {
   address          String   @default("")
   contactName      String?
   phone            String?
+  /// Who an institution is ("Wer wir sind"), shown to donors for transparency; optional.
+  description      String?
   reviewedAt       DateTime?
   createdAt        DateTime @default(now())
 

@@ -496,6 +496,16 @@ describe.skipIf(!hasDb)('impact (FA-04)', () => {
   });
 });
 
+describe.skipIf(!hasDb)('profile details', () => {
+  it('keeps contact person and phone; only institutions describe themselves', async () => {
+    await expect(services.updateProfileDetails(foodbank, { contactName: 'A', phone: '', description: '' })).rejects.toThrow(/Kontaktperson/);
+    await expect(services.updateProfileDetails(foodbank, { contactName: 'Anna Muster', phone: '', description: 'x'.repeat(301) })).rejects.toThrow(/höchstens 300/);
+    expect(await services.updateProfileDetails(foodbank, { contactName: ' Anna Muster ', phone: '044 000 00 00', description: ' Wir helfen Familien in Zürich. ' }))
+      .toEqual({ contactName: 'Anna Muster', phone: '044 000 00 00', description: 'Wir helfen Familien in Zürich.' });
+    expect((await services.updateProfileDetails(migros, { contactName: 'Sandra Keller', phone: '', description: 'ignoriert' })).description).toBeNull();
+  });
+});
+
 describe('database outages', () => {
   it('are reported as DatabaseUnavailableError with the digest the error pages recognise', async () => {
     const unreachable = createPrismaClient('postgresql://user:pw@127.0.0.1:1/none');

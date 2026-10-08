@@ -6,6 +6,8 @@ export const USER_STATUSES = ['PENDING', 'APPROVED', 'REJECTED'] as const;
 export const TEMPERATURE_RANGES = ['AMBIENT', 'COOL', 'CHILLED', 'SUPERCHILLED', 'FROZEN'] as const;
 export const MAX_TEMPERATURE_LENGTH = 60;
 export const MAX_PACKAGING_UNIT_LENGTH = 80;
+/** Length of an institution's "Wer wir sind" text. */
+export const MAX_DESCRIPTION_LENGTH = 300;
 /** Product categories (Warengruppen) a donation is classified into. */
 /** What the pallets are made of. Euro pallets are usually exchanged, so the driver needs to know. */
 export const PALLET_MATERIALS = ['EURO', 'DISPOSABLE', 'PLASTIC', 'OTHER'] as const;

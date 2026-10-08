@@ -41,13 +41,17 @@ export default async function AppLayout({ children }: LayoutProps<'/'>) {
           </Link>
           {verified ? <Nav items={items} /> : <div className="flex-1" />}
           <div className="ml-auto flex items-center gap-3 shrink-0">
-            <span title={profile.organizationName} className="hidden sm:flex size-10 shrink-0 items-center justify-center rounded-full bg-brand-50 text-brand-700 text-[14px] font-bold">
-              {initials(profile.organizationName)}
-            </span>
-            <div className="hidden md:flex lg:hidden 2xl:flex flex-col leading-tight max-w-52 min-w-0">
-              <span className="text-[15px] font-semibold text-ink truncate">{profile.organizationName}</span>
-              <span className="text-[13px] text-subtle">{ROLE_LABEL[profile.role]}</span>
-            </div>
+            {/* The organization block opens the profile (contact person, "Wer wir sind"). */}
+            <Link href={verified ? '/profile' : '/pending'} title={`${profile.organizationName} · Profil`}
+              className="flex items-center gap-3 rounded-full focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-700/25">
+              <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-brand-50 text-brand-700 text-[14px] font-bold">
+                {initials(profile.organizationName)}
+              </span>
+              <div className="hidden md:flex lg:hidden 2xl:flex flex-col leading-tight max-w-52 min-w-0">
+                <span className="text-[15px] font-semibold text-ink truncate">{profile.organizationName}</span>
+                <span className="text-[13px] text-subtle">{ROLE_LABEL[profile.role]}</span>
+              </div>
+            </Link>
             <form action={logout}>
               <button className="inline-flex items-center gap-2 h-10 px-3.5 rounded-full border border-control bg-white text-[15px] font-medium text-ink-2 hover:bg-sand"
                 aria-label="Abmelden">

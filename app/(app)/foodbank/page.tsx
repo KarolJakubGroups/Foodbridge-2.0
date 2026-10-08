@@ -57,6 +57,12 @@ export default async function FoodbankPage() {
                       <span className="text-sm text-muted">
                         {c.donation.donor.organizationName} · {fmtPallets(c.pallets)}{partOfOffer ? ` von ${c.donation.numberOfPallets}` : ''}
                       </span>
+                      {c.donation.donor.contactName && (
+                        <span className="text-sm text-muted">
+                          Kontakt: {c.donation.donor.contactName}
+                          {c.donation.donor.phone && <> · <a href={`tel:${c.donation.donor.phone}`} className={linkCls}>{c.donation.donor.phone}</a></>}
+                        </span>
+                      )}
                       <div><TempPill value={c.donation.temperatureRange} /></div>
                       <div className="flex flex-wrap items-center gap-2">
                         <Pill tone={s.tone}>{s.label}</Pill>

@@ -165,6 +165,6 @@ describe('buildDonorDashboard', () => {
       { category: 'BAKERY', totalWeightKg: 700 },
       { category: 'FRUIT_VEG', totalWeightKg: 100 },
     ]);
-    expect(board.recipients).toEqual(['Tafel Bern', 'Tafel Zürich']);
+    expect(board.recipients.map((r) => r.organizationName)).toEqual(['Tafel Bern', 'Tafel Zürich']);
   });
 });

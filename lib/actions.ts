@@ -14,7 +14,7 @@ import { coordinatesFor } from '@/lib/geo';
 import { ROLE_HOME } from '@/lib/format';
 import type { Profile } from '@/lib/types';
 import type {
-  ActionResult, BundleRequest, BundlingResult, DonationInput, PlannedGroup, RegistrationInput,
+  ActionResult, BundleRequest, BundlingResult, DonationInput, PlannedGroup, ProfileDetailsInput, RegistrationInput,
 } from '@/lib/types';
 
 const APP_PATHS = ['/donor', '/foodbank', '/dispatcher', '/dispatcher/map', '/network'];
@@ -105,6 +105,11 @@ export async function logout(): Promise<void> {
     console.error(e);
   }
   redirect('/login');
+}
+
+/** Contact person, phone and (institutions) the "Wer wir sind" text. */
+export async function updateProfile(input: ProfileDetailsInput): Promise<ActionResult> {
+  return run(async (p) => { await services.updateProfileDetails(p, input); }, ['/profile', '/donor', '/foodbank', '/network']);
 }
 
 // ------------------------------------------------------------- donations

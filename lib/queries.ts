@@ -14,7 +14,7 @@ export function fetchMyDonations(donorId: string): Promise<DonorDonation[]> {
     include: {
       donor: userSummary,
       claims: {
-        select: { id: true, pallets: true, palletNumbers: true, weightKg: true, status: true, claimedAt: true, foodbank: { select: { organizationName: true } }, transportOrder: orderWindow },
+        select: { id: true, pallets: true, palletNumbers: true, weightKg: true, status: true, claimedAt: true, foodbank: { select: { organizationName: true, description: true, contactName: true, phone: true } }, transportOrder: orderWindow },
         orderBy: { claimedAt: 'asc' },
       },
     },
@@ -37,7 +37,10 @@ export function fetchAvailableDonations(now = new Date()): Promise<AvailableDona
 export function fetchMyClaims(foodbankId: string): Promise<ClaimWithDonation[]> {
   return prisma.claim.findMany({
     where: { foodbankId },
-    include: { donation: { include: { donor: userSummary } }, transportOrder: orderWindow },
+    include: {
+      donation: { include: { donor: { select: { ...userSummary.select, contactName: true, phone: true } } } },
+      transportOrder: orderWindow,
+    },
     orderBy: { claimedAt: 'desc' },
   });
 }

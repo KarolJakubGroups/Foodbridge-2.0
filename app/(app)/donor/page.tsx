@@ -148,9 +148,21 @@ export default async function DonorPage() {
               {(recipients.length > 0 || topCategories.length > 0) && (
                 <div className="space-y-3 border-t border-line-soft pt-4">
                   {recipients.length > 0 && (
-                    <div className="space-y-1">
+                    <div className="space-y-1.5">
                       <div className="text-sm font-semibold text-muted">Ihre Spenden gingen an</div>
-                      <ul className="text-base space-y-0.5">{recipients.slice(0, 5).map((r) => <li key={r}>{r}</li>)}</ul>
+                      <ul className="space-y-3">
+                        {recipients.slice(0, 5).map((r) => (
+                          <li key={r.organizationName} className="space-y-0.5">
+                            <div className="text-base font-semibold text-ink">{r.organizationName}</div>
+                            {r.description && <p className="text-[15px] leading-snug text-ink-2">{r.description}</p>}
+                            {r.contactName && (
+                              <p className="text-sm text-muted">
+                                Kontakt: {r.contactName}{r.phone && <> · <a href={`tel:${r.phone}`} className={`${linkCls} no-print`}>{r.phone}</a></>}
+                              </p>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
                     </div>
                   )}
                   {topCategories.length > 0 && (
