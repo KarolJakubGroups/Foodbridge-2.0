@@ -143,8 +143,8 @@ export default async function DonorPage() {
                   </Pill>
                 )}
               </div>
-              <Stat label="Mahlzeiten" value={`≈ ${fmtNumber(impact.thisMonth.meals, 0)}`} />
-              <p className="text-[15px] text-muted">Seit Beginn: {fmtKg(impact.total.totalWeightKg)} gerettet, ≈ {fmtNumber(impact.total.meals, 0)} Mahlzeiten.</p>
+              <Stat label="Einkaufstaschen à 5 kg" value={`≈ ${fmtNumber(impact.thisMonth.bags, 0)}`} />
+              <p className="text-[15px] text-muted">Seit Beginn: {fmtKg(impact.total.totalWeightKg)} gerettet, ≈ {fmtNumber(impact.total.bags, 0)} Einkaufstaschen.</p>
               {(recipients.length > 0 || topCategories.length > 0) && (
                 <div className="space-y-3 border-t border-line-soft pt-4">
                   {recipients.length > 0 && (

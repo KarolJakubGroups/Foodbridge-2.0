@@ -471,7 +471,7 @@ describe.skipIf(!hasDb)('impact (FA-04)', () => {
     await services.claimDonation(foodbank, d.id, 2);
     await services.claimDonation(foodbank2, d.id, 1);
 
-    expect(await fetchGlobalImpact()).toEqual({ totalWeightKg: 300, meals: 600, donationCount: 2 });
+    expect(await fetchGlobalImpact()).toEqual({ totalWeightKg: 300, bags: 60, donationCount: 2 });
     expect((await fetchImpactFor(migros.id, 'DONOR')).totalWeightKg).toBe(300);
     expect((await fetchImpactFor(foodbank.id, 'FOODBANK')).totalWeightKg).toBe(200);
     expect((await fetchImpactFor(foodbank2.id, 'FOODBANK')).totalWeightKg).toBe(100);

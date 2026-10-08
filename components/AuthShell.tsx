@@ -17,7 +17,7 @@ export function AuthShell({ title, subtitle, children, wide = false }: { title: 
         <div className="absolute inset-0 bg-gradient-to-t from-brand-900 via-brand-900/70 to-brand-900/20" />
         <div className="relative"><span className="inline-flex rounded-2xl bg-white px-3 py-2"><Logo /></span></div>
         <div className="relative max-w-md space-y-3">
-          <p className="text-4xl font-bold leading-tight tracking-[-0.02em]">Überschuss wird zu Mahlzeiten.</p>
+          <p className="text-4xl font-bold leading-tight tracking-[-0.02em]">Überschuss wird zu vollen Einkaufstaschen.</p>
           <p className="text-lg text-white/85">Spender, Abgabestellen und Galliker auf einer Plattform – für die Stiftung Schweizer Tafel.</p>
         </div>
       </aside>

@@ -75,7 +75,7 @@ export default async function FoodbankPage() {
             <span aria-hidden className="absolute -right-10 -top-10 size-40 rounded-full bg-white/10" />
             <span className="text-[15px] text-brand-100">Bisher erhalten</span>
             <span className="font-display text-4xl font-bold tabular-nums">{fmtKg(impact.totalWeightKg)}</span>
-            <span className="text-base text-brand-100">≈ {fmtNumber(impact.meals, 0)} Mahlzeiten für Ihre Gäste</span>
+            <span className="text-base text-brand-100">≈ {fmtNumber(impact.bags, 0)} Einkaufstaschen für Ihre Gäste</span>
           </section>
         </aside>
       </div>

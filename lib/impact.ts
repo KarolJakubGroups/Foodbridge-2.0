@@ -1,9 +1,10 @@
-/** Impact tracking: rescued weight and the meals it makes. */
-export const MEALS_PER_KG = 2; // Schweizer Tafel: roughly two meals per kilogram rescued
+/** Impact tracking: rescued weight and the shopping bags it fills. */
+export const KG_PER_BAG = 5; // Schweizer Tafel: one shopping bag handed out holds about 5 kg
 
 export interface ImpactReport {
   totalWeightKg: number;
-  meals: number;
+  /** Shopping bags (Einkaufstaschen) the rescued food fills. */
+  bags: number;
   /** Reservations counted. */
   donationCount: number;
 }
@@ -13,7 +14,7 @@ export function computeImpact(rows: readonly { weightKg: number }[]): ImpactRepo
   const totalWeightKg = rows.reduce((sum, r) => sum + r.weightKg, 0);
   return {
     totalWeightKg,
-    meals: Math.round(totalWeightKg * MEALS_PER_KG),
+    bags: Math.round(totalWeightKg / KG_PER_BAG),
     donationCount: rows.length,
   };
 }

@@ -75,7 +75,7 @@ Wirkungsbilanz unter „Logistik-Netzwerk“.
 | Zurückziehen | `withdrawDonation` zieht nur nicht reservierte Paletten zurück: ohne Reservierungen wird das Angebot `WITHDRAWN`, sonst schrumpft es auf die reservierten Paletten (mit ihren Gewichten, neu nummeriert) |
 | Rollenrechte | Jede Service-Funktion prüft die Rolle; Seiten leiten fremde Rollen um (`lib/auth.ts`) |
 | Spender-Verifizierung | `registerDonor` legt Konten als `PENDING` an; `reviewDonor` (nur FOODBANK) setzt `APPROVED`/`REJECTED`; `createDonation` verlangt `APPROVED`; `requireProfile` leitet Unverifizierte nach `/pending` |
-| Wirkungsbilanz | `lib/impact.ts`: zählt nur tatsächlich reservierte Paletten (Summe ihrer Gewichte), 2 Mahlzeiten/kg |
+| Wirkungsbilanz | `lib/impact.ts`: zählt nur tatsächlich reservierte Paletten (Summe ihrer Gewichte), umgerechnet in Einkaufstaschen à 5 kg |
 
 ## Skripte
 
