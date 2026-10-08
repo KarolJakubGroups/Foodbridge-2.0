@@ -100,7 +100,7 @@ export default async function DonorPage() {
               <ActionCard tone="orange" icon={<AlertIcon />} label="Haltbarkeit läuft ab"
                 title={bestBeforeSoon.length === 1 ? bestBeforeSoon[0].productName : `${bestBeforeSoon.length} Produkte`}>
                 {bestBeforeSoon.map((d) => (
-                  <p key={d.id}>{bestBeforeSoon.length > 1 && <b>{d.productName}: </b>}{fmtBestBefore(d.bestBeforeDate, now).text}</p>
+                  <p key={d.id}>{bestBeforeSoon.length > 1 && <b>{d.productName}: </b>}{d.bestBeforeDate && fmtBestBefore(d.bestBeforeDate, now).text}</p>
                 ))}
               </ActionCard>
             )}

@@ -83,7 +83,8 @@ export async function createDonation(donor: Profile, input: DonationInput) {
   if (!CATEGORIES.includes(input.category)) missing.push('Warengruppe');
   if (!PALLET_MATERIALS.includes(input.palletMaterial)) missing.push('Palettenart');
   if (!temperatureRange) missing.push('Temperatur');
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.bestBeforeDate ?? '')) missing.push('MHD');
+  const bestBeforeDate = input.bestBeforeDate?.trim() || null;
+  if (bestBeforeDate && !/^\d{4}-\d{2}-\d{2}$/.test(bestBeforeDate)) missing.push('MHD');
   if (!input.pickupAddress?.trim()) missing.push('Abholadresse');
   const weights = Array.isArray(input.palletWeights) ? input.palletWeights : [];
   const weightProblem = palletWeightsProblem(weights);
@@ -95,7 +96,7 @@ export async function createDonation(donor: Profile, input: DonationInput) {
   if (missing.length) throw new DomainError(`Pflichtfelder fehlen oder sind ungültig: ${missing.join(', ')}.`);
   if (end <= start) throw new DomainError('Das Abholzeitfenster-Ende muss nach dem Beginn liegen.');
   if (end <= new Date()) throw new DomainError('Das Abholzeitfenster liegt in der Vergangenheit. Bitte ein kommendes Zeitfenster wählen.');
-  if (input.bestBeforeDate < new Date().toISOString().slice(0, 10)) {
+  if (bestBeforeDate && bestBeforeDate < new Date().toISOString().slice(0, 10)) {
     throw new DomainError('Das Mindesthaltbarkeitsdatum darf nicht in der Vergangenheit liegen.');
   }
 
@@ -107,7 +108,7 @@ export async function createDonation(donor: Profile, input: DonationInput) {
       temperatureRange: temperatureRange!,
       packagingUnit: input.packagingUnit?.trim().slice(0, MAX_PACKAGING_UNIT_LENGTH) || null,
       palletMaterial: input.palletMaterial,
-      bestBeforeDate: input.bestBeforeDate,
+      bestBeforeDate,
       pickupAddress: input.pickupAddress.trim().slice(0, 200),
       numberOfPallets: weights.length,
       palletWeights: weights,

@@ -120,6 +120,12 @@ describe.skipIf(!hasDb)('donation capture (FA-01)', () => {
     expect(totalWeightKg(d)).toBe(501);
   });
 
+  it('does not need a best-before date; the pickup window decides', async () => {
+    expect((await services.createDonation(migros, { ...valid, bestBeforeDate: '' })).bestBeforeDate).toBeNull();
+    expect((await services.createDonation(migros, { ...valid, bestBeforeDate: null })).bestBeforeDate).toBeNull();
+    await expect(services.createDonation(migros, { ...valid, bestBeforeDate: '1.10.2026' })).rejects.toThrow(/MHD/);
+  });
+
   it('stores an optional packaging unit, trimmed', async () => {
     expect((await services.createDonation(migros, { ...valid, packagingUnit: '  Karton à 12 × 1 l ' })).packagingUnit).toBe('Karton à 12 × 1 l');
     expect((await services.createDonation(migros, { ...valid, packagingUnit: '   ' })).packagingUnit).toBeNull();

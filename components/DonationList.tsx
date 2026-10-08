@@ -116,7 +116,7 @@ export function DonationList({ donations, now: nowIso }: { donations: DonorDonat
             <span>Produkt</span><span>Stand</span><span>Nächster Schritt</span><span className="w-32" />
           </li>
           {rows.map(({ d, state }) => {
-            const bestBefore = fmtBestBefore(d.bestBeforeDate, now);
+            const bestBefore = d.bestBeforeDate ? fmtBestBefore(d.bestBeforeDate, now) : null;
             const showBestBefore = !['COLLECTED', 'WITHDRAWN'].includes(state);
             const left = remainingPallets(d);
             const canWithdraw = d.status === 'AVAILABLE' && left > 0;
@@ -137,7 +137,7 @@ export function DonationList({ donations, now: nowIso }: { donations: DonorDonat
                       <PalletBar claimed={d.claimedPallets} total={d.numberOfPallets} />
                     </div>
                   )}
-                  {showBestBefore && (
+                  {showBestBefore && bestBefore && (
                     <span className={`text-sm ${bestBefore.urgent ? 'font-semibold text-[#9a4a0a]' : 'text-subtle'}`}>{bestBefore.text}</span>
                   )}
                   </div>

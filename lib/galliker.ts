@@ -61,7 +61,8 @@ export interface GallikerOrderPayload {
     weightKg: number;
     /** Weight of each pallet in kg (since 1.1): pallets of one product may weigh differently. */
     palletWeightsKg: number[];
-    bestBefore: string;
+    /** YYYY-MM-DD, null when the donor gave none (optional since 1.2). */
+    bestBefore: string | null;
     deliverTo: { institution: string; address: string };
   }[];
   totals: { pallets: number; weightKg: number; stops: number };
@@ -78,7 +79,7 @@ interface OrderForPayload {
     pallets: number;
     palletNumbers: number[];
     weightKg: number;
-    donation: { productName: string; category: string; temperatureRange: string; packagingUnit: string | null; palletMaterial: string | null; palletWeights: number[]; bestBeforeDate: string; pickupAddress: string };
+    donation: { productName: string; category: string; temperatureRange: string; packagingUnit: string | null; palletMaterial: string | null; palletWeights: number[]; bestBeforeDate: string | null; pickupAddress: string };
     foodbank: { organizationName: string; address: string };
   }[];
 }

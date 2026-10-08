@@ -65,7 +65,7 @@ function Existing({ d }: { d: OpenDonation }) {
   const now = new Date();
   return (
     <span>
-      {fmtPalletLoad(d.palletWeights)}, haltbar bis {fmtDate(d.bestBeforeDate)},
+      {fmtPalletLoad(d.palletWeights)},{d.bestBeforeDate && ` haltbar bis ${fmtDate(d.bestBeforeDate)},`}
       Abholung ab {fmtDayTime(d.overlapStart, now)} Uhr, sichtbar bis {fmtDayTime(visibleUntil(d.createdAt), now)} Uhr.
     </span>
   );
@@ -148,7 +148,7 @@ export function DonationForm({ defaultAddress, organizationName, openDonations, 
       temperatureRange: form.temperatureRange,
       packagingUnit: form.packagingUnit,
       palletMaterial: form.palletMaterial,
-      bestBeforeDate: form.bestBeforeDate,
+      bestBeforeDate: form.bestBeforeDate || null,
       pickupAddress: form.pickupAddress,
       palletWeights,
       overlapStart: new Date(form.overlapStart).toISOString(),
@@ -169,7 +169,6 @@ export function DonationForm({ defaultAddress, organizationName, openDonations, 
     if (mergeTarget) return doMerge(mergeTarget, palletWeights);
     if (!form.category) { scrollUp(); return setError('Bitte wählen Sie eine Warengruppe.'); }
     if (!form.temperatureRange.trim()) { scrollUp(); return setError('Bitte geben Sie an, wie die Ware gelagert werden muss.'); }
-    if (!form.bestBeforeDate) { scrollUp(); return setError('Bitte geben Sie an, bis wann die Ware mindestens haltbar ist.'); }
     if (form.overlapEnd <= form.overlapStart) { scrollUp(); return setError('Das Ende der Abholzeit muss nach dem Beginn liegen.'); }
     // Same product already open: ask before creating a second offer.
     if (suggestion) return setConfirmMatch(suggestion);
@@ -311,9 +310,18 @@ export function DonationForm({ defaultAddress, organizationName, openDonations, 
             </Field>
           </Step>
 
-          <Step n={3} title="Haltbarkeit und Abholung">
+          <Step n={3} title="Abholung und Haltbarkeit">
+            <div className="grid grid-cols-1 @xl:grid-cols-2 gap-4">
+              <Field label="Abholung möglich ab">
+                <DateTimePicker label="Abholung ab" value={form.overlapStart} onChange={(v) => setValue('overlapStart', v)} min={inDays(0)} />
+              </Field>
+              <Field label="bis">
+                <DateTimePicker label="Abholung bis" value={form.overlapEnd} onChange={(v) => setValue('overlapEnd', v)} min={inDays(0)} />
+              </Field>
+            </div>
+
             <div className="flex flex-col gap-3">
-              <label htmlFor="best-before" className="text-base font-semibold text-ink">Mindestens haltbar bis</label>
+              <label htmlFor="best-before" className="text-base font-semibold text-ink">Mindestens haltbar bis <span className="font-normal text-muted">(optional)</span></label>
               <div className="flex flex-wrap items-center gap-2.5">
                 <span className="w-full @md:w-56">
                   <DatePicker id="best-before" value={form.bestBeforeDate} onChange={(v) => setValue('bestBeforeDate', v)} min={inDays(0)} />
@@ -325,16 +333,11 @@ export function DonationForm({ defaultAddress, organizationName, openDonations, 
                     {q.label}
                   </button>
                 ))}
+                {form.bestBeforeDate && (
+                  <button type="button" onClick={() => setValue('bestBeforeDate', '')} className={`${linkCls} px-2 h-10`}>Kein Datum</button>
+                )}
               </div>
-            </div>
-
-            <div className="grid grid-cols-1 @xl:grid-cols-2 gap-4">
-              <Field label="Abholung möglich ab">
-                <DateTimePicker label="Abholung ab" value={form.overlapStart} onChange={(v) => setValue('overlapStart', v)} min={inDays(0)} />
-              </Field>
-              <Field label="bis">
-                <DateTimePicker label="Abholung bis" value={form.overlapEnd} onChange={(v) => setValue('overlapEnd', v)} min={inDays(0)} />
-              </Field>
+              <span className="text-sm text-muted">Nur angeben, wenn es für die Abgabestellen wichtig ist. Entscheidend ist die Abholzeit.</span>
             </div>
 
             {editAddress ? (

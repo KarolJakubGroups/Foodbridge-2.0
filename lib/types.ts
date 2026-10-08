@@ -58,7 +58,8 @@ export interface DonationInput {
   /** Optional, e.g. "Karton à 12 × 1 l". */
   packagingUnit?: string;
   palletMaterial: PalletMaterial;
-  bestBeforeDate: string; // YYYY-MM-DD
+  /** YYYY-MM-DD; optional, the pickup window is what counts. */
+  bestBeforeDate?: string | null;
   pickupAddress: string;
   /** Weight of each pallet in kg; its length is the number of pallets. */
   palletWeights: number[];

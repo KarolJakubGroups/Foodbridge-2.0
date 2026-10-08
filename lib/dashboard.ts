@@ -20,7 +20,7 @@ export interface DashboardDonation {
   numberOfPallets: number;
   claimedPallets: number;
   palletWeights: number[];
-  bestBeforeDate: string;
+  bestBeforeDate: string | null;
   createdAt: Date;
   overlapEnd: Date;
   claims: DashboardClaim[];
@@ -71,7 +71,7 @@ export function buildDonorDashboard(donations: DashboardDonation[], now = new Da
     const open = state === 'OPEN' || state === 'PARTIAL';
     if (open && claimDeadline(d).getTime() - now.getTime() <= EXPIRY_WARNING_MS) expiringSoon.push(d);
     if (state === 'EXPIRED') expired.push(d);
-    if ((open || state === 'RESERVED' || state === 'SCHEDULED') && d.bestBeforeDate <= bestBeforeLimit) bestBeforeSoon.push(d);
+    if ((open || state === 'RESERVED' || state === 'SCHEDULED') && d.bestBeforeDate && d.bestBeforeDate <= bestBeforeLimit) bestBeforeSoon.push(d);
   }
 
   // Earliest pickup still ahead: reservations in an order that is not delivered yet.

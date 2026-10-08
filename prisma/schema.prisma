@@ -52,7 +52,8 @@ model Donation {
   packagingUnit    String?
   /// What the pallets are made of: EURO | DISPOSABLE | PLASTIC | OTHER (see lib/domain.ts); null on offers from before it was asked.
   palletMaterial   String?
-  bestBeforeDate   String   // YYYY-MM-DD (date only, no timezone)
+  /// YYYY-MM-DD (date only, no timezone); optional: the pickup window decides, many goods have no meaningful date.
+  bestBeforeDate   String?
   pickupAddress    String
   /// Pallets offered in total.
   numberOfPallets  Int

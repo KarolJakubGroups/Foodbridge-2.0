@@ -16,7 +16,7 @@ import { useNow } from '@/components/useNow';
 type Sort = 'deadline' | 'bestBefore' | 'newest' | 'weight';
 const SORTS: { value: Sort; label: string }[] = [
   { value: 'deadline', label: 'Reservierung endet bald' },
-  { value: 'bestBefore', label: 'Kürzeste Haltbarkeit zuerst' },
+  { value: 'bestBefore', label: 'Kürzeste Haltbarkeit zuerst' }, // offers without a date last
   { value: 'newest', label: 'Neueste zuerst' },
   { value: 'weight', label: 'Grösste Menge zuerst' },
 ];
@@ -86,7 +86,7 @@ export function AvailableDonations({ donations, now: nowIso }: { donations: Avai
         || categoryLabel(d.category).toLowerCase().includes(q)));
     const by: Record<Sort, (a: AvailableDonation, b: AvailableDonation) => number> = {
       deadline: (a, b) => claimDeadline(a).getTime() - claimDeadline(b).getTime(),
-      bestBefore: (a, b) => a.bestBeforeDate.localeCompare(b.bestBeforeDate),
+      bestBefore: (a, b) => (a.bestBeforeDate ?? '9999').localeCompare(b.bestBeforeDate ?? '9999'),
       newest: (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
       weight: (a, b) => freeKg(b) - freeKg(a),
     };
@@ -163,7 +163,7 @@ export function AvailableDonations({ donations, now: nowIso }: { donations: Avai
       ) : (
         <ul className="grid grid-cols-1 @xl:grid-cols-2 @4xl:grid-cols-3 gap-4 md:gap-5">
           {rows.map((d) => {
-            const bestBefore = fmtBestBefore(d.bestBeforeDate, now);
+            const bestBefore = d.bestBeforeDate ? fmtBestBefore(d.bestBeforeDate, now) : null;
             const confirming = confirmId === d.id;
             const left = remainingPallets(d);
             const free = freePallets(d);
@@ -208,12 +208,14 @@ export function AvailableDonations({ donations, now: nowIso }: { donations: Avai
                   </span>
                 )}
                 <div className="flex flex-col gap-1.5 text-[15px] text-ink-2">
-                  <span className="flex items-center gap-2">
-                    <CalendarIcon className="size-4 shrink-0 text-subtle" />Abholung {fmtWindow(d.overlapStart, d.overlapEnd, now)}
+                  <span className="flex items-center gap-2 font-semibold text-ink">
+                    <CalendarIcon className="size-4 shrink-0 text-brand-700" />Abholung {fmtWindow(d.overlapStart, d.overlapEnd, now)}
                   </span>
-                  <span className={`flex items-center gap-2 ${bestBefore.urgent ? 'font-semibold text-[#9a4a0a]' : ''}`}>
-                    <ClockIcon className="size-4 shrink-0 text-subtle" />{bestBefore.text}
-                  </span>
+                  {bestBefore && (
+                    <span className={`flex items-center gap-2 ${bestBefore.urgent ? 'font-semibold text-[#9a4a0a]' : ''}`}>
+                      <ClockIcon className="size-4 shrink-0 text-subtle" />{bestBefore.text}
+                    </span>
+                  )}
                 </div>
                 <ClaimCountdown deadline={deadline} reason={claimDeadlineReason(d)} now={nowMs} />
                 <div className="mt-auto pt-1">
