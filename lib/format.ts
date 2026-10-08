@@ -1,4 +1,4 @@
-import type { Category, ClaimStatus, DonationState, Role, TemperatureRange, TransportStatus, UserStatus } from './domain';
+import type { Category, ClaimStatus, PalletMaterial, DonationState, Role, TemperatureRange, TransportStatus, UserStatus } from './domain';
 
 const ZURICH = 'Europe/Zurich';
 
@@ -179,6 +179,15 @@ export const CATEGORY_LABEL: Record<Category, string> = {
   OTHER: 'Sonstiges',
 };
 export const CATEGORIES_OPTIONS = (Object.entries(CATEGORY_LABEL) as [Category, string][]).map(([value, label]) => ({ value, label }));
+
+export const PALLET_MATERIAL_LABEL: Record<PalletMaterial, string> = {
+  EURO: 'Europalette', DISPOSABLE: 'Einwegpalette', PLASTIC: 'Kunststoffpalette', OTHER: 'Andere Palette',
+};
+export const PALLET_MATERIAL_OPTIONS = (Object.entries(PALLET_MATERIAL_LABEL) as [PalletMaterial, string][]).map(([value, label]) => ({ value, label }));
+
+export function palletMaterialLabel(value: string | null | undefined): string | null {
+  return value ? PALLET_MATERIAL_LABEL[value as PalletMaterial] ?? value : null;
+}
 
 export function categoryLabel(value: string): string {
   return CATEGORY_LABEL[value as Category] ?? value;

@@ -55,6 +55,8 @@ export interface GallikerOrderPayload {
     storage: string;
     /** How the goods are packed (since 1.2), null when the donor gave none. */
     packagingUnit: string | null;
+    /** EURO | DISPOSABLE | PLASTIC | OTHER (since 1.2), null when unknown. Euro pallets are usually exchanged. */
+    palletMaterial: string | null;
     pallets: number;
     weightKg: number;
     /** Weight of each pallet in kg (since 1.1): pallets of one product may weigh differently. */
@@ -76,7 +78,7 @@ interface OrderForPayload {
     pallets: number;
     palletNumbers: number[];
     weightKg: number;
-    donation: { productName: string; category: string; temperatureRange: string; packagingUnit: string | null; palletWeights: number[]; bestBeforeDate: string; pickupAddress: string };
+    donation: { productName: string; category: string; temperatureRange: string; packagingUnit: string | null; palletMaterial: string | null; palletWeights: number[]; bestBeforeDate: string; pickupAddress: string };
     foodbank: { organizationName: string; address: string };
   }[];
 }
@@ -100,6 +102,7 @@ export function buildGallikerPayload(order: OrderForPayload): GallikerOrderPaylo
     category: c.donation.category,
     storage: c.donation.temperatureRange,
     packagingUnit: c.donation.packagingUnit,
+    palletMaterial: c.donation.palletMaterial,
     pallets: c.pallets,
     weightKg: Math.round(c.weightKg * 10) / 10,
     palletWeightsKg: c.palletNumbers.map((n) => c.donation.palletWeights[n - 1]),

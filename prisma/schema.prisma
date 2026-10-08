@@ -50,6 +50,8 @@ model Donation {
   temperatureRange String   // preset (AMBIENT | COOL | CHILLED | SUPERCHILLED | FROZEN) or the donor's own text
   /// How the goods are packed, as the donor describes it (e.g. "Karton à 12 × 1 l"); optional.
   packagingUnit    String?
+  /// What the pallets are made of: EURO | DISPOSABLE | PLASTIC | OTHER (see lib/domain.ts); null on offers from before it was asked.
+  palletMaterial   String?
   bestBeforeDate   String   // YYYY-MM-DD (date only, no timezone)
   pickupAddress    String
   /// Pallets offered in total.

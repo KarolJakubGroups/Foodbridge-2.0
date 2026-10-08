@@ -89,7 +89,7 @@ describe.skipIf(!hasDb)('donor registration and verification', () => {
     const pendingProfile = profile(user);
     const valid = {
       productName: 'Rüebli', category: 'FRUIT_VEG' as const, temperatureRange: 'CHILLED' as const, bestBeforeDate: bestBefore,
-      pickupAddress: 'Zürich', palletWeights: [10], overlapStart: inDays(5, 8).toISOString(), overlapEnd: inDays(5, 12).toISOString(),
+      pickupAddress: 'Zürich', palletWeights: [10], palletMaterial: 'EURO' as const, overlapStart: inDays(5, 8).toISOString(), overlapEnd: inDays(5, 12).toISOString(),
     };
     await expect(services.createDonation(pendingProfile, valid)).rejects.toThrow(/noch nicht freigegeben/);
 
@@ -109,7 +109,7 @@ describe.skipIf(!hasDb)('donor registration and verification', () => {
 describe.skipIf(!hasDb)('donation capture (FA-01)', () => {
   const valid = {
     productName: 'Rüebli', category: 'FRUIT_VEG' as const, temperatureRange: 'CHILLED' as const, bestBeforeDate: bestBefore, pickupAddress: 'Limmatstrasse 152',
-    palletWeights: [250.5, 250.5], overlapStart: inDays(5, 8).toISOString(), overlapEnd: inDays(5, 12).toISOString(),
+    palletWeights: [250.5, 250.5], palletMaterial: 'EURO' as const, overlapStart: inDays(5, 8).toISOString(), overlapEnd: inDays(5, 12).toISOString(),
   };
 
   it('stores a donation with all 7 fields as AVAILABLE and nothing reserved', async () => {
@@ -139,6 +139,11 @@ describe.skipIf(!hasDb)('donation capture (FA-01)', () => {
     await expect(services.createDonation(migros, { ...valid, overlapEnd: valid.overlapStart })).rejects.toThrow(/Ende/);
     await expect(services.createDonation(migros, { ...valid, overlapStart: inDays(-2, 8).toISOString(), overlapEnd: inDays(-1, 8).toISOString() }))
       .rejects.toThrow(/Vergangenheit/);
+  });
+
+  it('stores the pallet material and requires a known one', async () => {
+    expect((await services.createDonation(migros, { ...valid, palletMaterial: 'PLASTIC' })).palletMaterial).toBe('PLASTIC');
+    await expect(services.createDonation(migros, { ...valid, palletMaterial: 'GOLD' as never })).rejects.toThrow(/Palettenart/);
   });
 
   it('rejects an unknown category', async () => {

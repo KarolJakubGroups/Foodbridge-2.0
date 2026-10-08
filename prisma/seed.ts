@@ -79,7 +79,7 @@ async function main() {
     const claimedPallets = claims.reduce((s, c) => s + c.pallets, 0);
     const d = await prisma.donation.create({
       data: {
-        donorId: donor.id, productName, category, temperatureRange, packagingUnit: PACKAGING[productName] ?? null, bestBeforeDate: dateIn(bestBeforeInDays), pickupAddress: donor.address,
+        donorId: donor.id, productName, category, temperatureRange, packagingUnit: PACKAGING[productName] ?? null, palletMaterial: productName === 'Brot vom Vortag' ? 'DISPOSABLE' : 'EURO', bestBeforeDate: dateIn(bestBeforeInDays), pickupAddress: donor.address,
         numberOfPallets, palletWeights, overlapStart: start, overlapEnd: end, createdAt,
         claimedPallets, status: claimedPallets === numberOfPallets ? 'CLAIMED' : 'AVAILABLE',
       },

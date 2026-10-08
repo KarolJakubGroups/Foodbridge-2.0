@@ -4,9 +4,9 @@ import Link from 'next/link';
 import { useMemo, useRef, useState, useTransition, type FormEvent, type ReactNode } from 'react';
 import { addPallets, createDonation } from '@/lib/actions';
 import { callAction } from '@/lib/call-action';
-import type { Category, DonationInput, DonationPrefill, OpenDonation } from '@/lib/types';
+import type { Category, DonationInput, PalletMaterial, DonationPrefill, OpenDonation } from '@/lib/types';
 import {
-  CATEGORIES_OPTIONS, TEMPERATURES, categoryLabel, fmtBestBefore, fmtDate, fmtDayTime, fmtKg, fmtPalletLoad, fmtPallets, fmtTime, isTemperaturePreset,
+  CATEGORIES_OPTIONS, PALLET_MATERIAL_OPTIONS, TEMPERATURES, palletMaterialLabel, categoryLabel, fmtBestBefore, fmtDate, fmtDayTime, fmtKg, fmtPalletLoad, fmtPallets, fmtTime, isTemperaturePreset,
 } from '@/lib/format';
 import { FRESHNESS_DAYS, MAX_PACKAGING_UNIT_LENGTH, MAX_TEMPERATURE_LENGTH, normalizeProductName, palletWeightsProblem, totalWeightKg } from '@/lib/domain';
 import { Alert, Field, FoodPhoto, PhotoPill, TempPill, btn, chipCls, inputCls, linkCls } from '@/components/ui';
@@ -79,6 +79,8 @@ export function DonationForm({ defaultAddress, organizationName, openDonations, 
     category: (prefill?.category ?? '') as Category | '',
     temperatureRange: prefill?.temperatureRange ?? '',
     packagingUnit: prefill?.packagingUnit ?? '',
+    // Most donations come on Euro pallets; preselected to save a tap.
+    palletMaterial: (prefill?.palletMaterial ?? 'EURO') as PalletMaterial,
     bestBeforeDate: '',
     pickupAddress: defaultAddress,
     ...defaultWindow(),
@@ -145,6 +147,7 @@ export function DonationForm({ defaultAddress, organizationName, openDonations, 
       category: form.category as Category,
       temperatureRange: form.temperatureRange,
       packagingUnit: form.packagingUnit,
+      palletMaterial: form.palletMaterial,
       bestBeforeDate: form.bestBeforeDate,
       pickupAddress: form.pickupAddress,
       palletWeights,
@@ -290,6 +293,18 @@ export function DonationForm({ defaultAddress, organizationName, openDonations, 
 
           <Step n={2} title="Wie viel ist es?">
             <PalletWeightsInput value={palletState} onChange={setPalletState} />
+            <div className="flex flex-col gap-3" role="radiogroup" aria-label="Palettenart">
+              <span className="text-base font-semibold text-ink">Palettenart</span>
+              <div className="flex flex-wrap gap-2">
+                {PALLET_MATERIAL_OPTIONS.map((m) => (
+                  <label key={m.value} className={`${chipCls(form.palletMaterial === m.value)} cursor-pointer has-[:focus-visible]:ring-4 has-[:focus-visible]:ring-brand-700/25`}>
+                    <input type="radio" name="palletMaterial" value={m.value} checked={form.palletMaterial === m.value}
+                      onChange={set('palletMaterial')} className="sr-only" />
+                    {m.label}
+                  </label>
+                ))}
+              </div>
+            </div>
             <Field label="Verpackungseinheit (optional)" hint="Wie die Ware verpackt ist, z. B. «Karton à 12 × 1 l» oder «Kiste à 10 kg».">
               <input className={inputCls} value={form.packagingUnit} onChange={set('packagingUnit')} maxLength={MAX_PACKAGING_UNIT_LENGTH}
                 placeholder="z. B. Karton à 12 × 1 l" autoComplete="off" />
@@ -354,7 +369,9 @@ export function DonationForm({ defaultAddress, organizationName, openDonations, 
               {form.productName.trim() || 'Produktname'}
             </span>
             <span className="text-[15px] text-muted">{organizationName}</span>
-            {form.packagingUnit.trim() && <span className="text-[15px] text-ink-2">{form.packagingUnit.trim()}</span>}
+            <span className="text-[15px] text-ink-2">
+              {[palletMaterialLabel(form.palletMaterial), form.packagingUnit.trim()].filter(Boolean).join(' · ')}
+            </span>
             <div className="flex items-baseline gap-2.5">
               <span className="text-[32px] font-bold tracking-[-0.02em] text-brand-700 tabular-nums">{fmtKg(totalKg)}</span>
               <span className="text-base text-muted">{fmtPallets(pallets)}</span>

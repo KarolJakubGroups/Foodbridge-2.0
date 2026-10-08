@@ -1,7 +1,7 @@
 import type { Claim, Donation, GallikerTransmission, TransportOrder, User } from '@/lib/generated/prisma/client';
-import type { Category, Role, TemperatureRange, UserStatus } from '@/lib/domain';
+import type { Category, PalletMaterial, Role, TemperatureRange, UserStatus } from '@/lib/domain';
 
-export type { Category, ClaimStatus, Role, TemperatureRange, DonationStatus, TransportStatus, UserStatus } from '@/lib/domain';
+export type { Category, ClaimStatus, PalletMaterial, Role, TemperatureRange, DonationStatus, TransportStatus, UserStatus } from '@/lib/domain';
 export type { Claim, Donation, GallikerTransmission, TransportOrder };
 
 export type UserSummary = Pick<User, 'id' | 'username' | 'organizationName' | 'address'>;
@@ -57,6 +57,7 @@ export interface DonationInput {
   temperatureRange: TemperatureRange | (string & {});
   /** Optional, e.g. "Karton à 12 × 1 l". */
   packagingUnit?: string;
+  palletMaterial: PalletMaterial;
   bestBeforeDate: string; // YYYY-MM-DD
   pickupAddress: string;
   /** Weight of each pallet in kg; its length is the number of pallets. */
@@ -66,7 +67,7 @@ export interface DonationInput {
 }
 
 /** Values copied into the donor form when an old offer is registered again. */
-export type DonationPrefill = Pick<Donation, 'productName' | 'category' | 'temperatureRange' | 'packagingUnit' | 'palletWeights'>;
+export type DonationPrefill = Pick<Donation, 'productName' | 'category' | 'temperatureRange' | 'packagingUnit' | 'palletMaterial' | 'palletWeights'>;
 
 /** An own, still-open offer a donor could add pallets to instead of registering a duplicate. */
 export type OpenDonation = Pick<Donation, 'id' | 'productName' | 'category' | 'temperatureRange'

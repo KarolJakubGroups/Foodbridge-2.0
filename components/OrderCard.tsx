@@ -4,7 +4,7 @@ import { useMemo, useState, useTransition } from 'react';
 import { resendToGalliker, setOrderStatus } from '@/lib/actions';
 import { callAction } from '@/lib/call-action';
 import type { TransportOrderWithDetails } from '@/lib/types';
-import { fmtCount, fmtDateOfInstant, fmtDayTime, fmtKg, fmtPallets, fmtWindow, tempKind } from '@/lib/format';
+import { fmtCount, fmtDateOfInstant, fmtDayTime, fmtKg, fmtPallets, fmtWindow, palletMaterialLabel, tempKind } from '@/lib/format';
 import { Alert, FoodPhoto, Pill, TempPill, TransportBadge, btn } from '@/components/ui';
 import { AlertIcon, CheckIcon, MapPinIcon, RefreshIcon, SendIcon, SnowflakeIcon, ThermometerIcon, TruckIcon } from '@/components/icons';
 
@@ -156,7 +156,7 @@ export function OrderCard({ order, now: nowIso, readOnly = false }: { order: Tra
             <div className="min-w-0 flex flex-col gap-1">
             <span>
               <span className="font-semibold text-ink">{c.donation.productName}</span>
-              <span className="text-muted"> · {fmtPallets(c.pallets)} · {fmtKg(c.weightKg)}{c.donation.packagingUnit ? ` · ${c.donation.packagingUnit}` : ''}</span>
+              <span className="text-muted"> · {fmtPallets(c.pallets)} · {fmtKg(c.weightKg)}{[palletMaterialLabel(c.donation.palletMaterial), c.donation.packagingUnit].filter(Boolean).map((x) => ` · ${x}`).join('')}</span>
             </span>
             <span className="flex flex-wrap items-center gap-2 text-sm text-subtle">
               <TempPill value={c.donation.temperatureRange} />

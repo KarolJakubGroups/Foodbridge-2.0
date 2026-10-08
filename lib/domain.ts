@@ -7,6 +7,8 @@ export const TEMPERATURE_RANGES = ['AMBIENT', 'COOL', 'CHILLED', 'SUPERCHILLED',
 export const MAX_TEMPERATURE_LENGTH = 60;
 export const MAX_PACKAGING_UNIT_LENGTH = 80;
 /** Product categories (Warengruppen) a donation is classified into. */
+/** What the pallets are made of. Euro pallets are usually exchanged, so the driver needs to know. */
+export const PALLET_MATERIALS = ['EURO', 'DISPOSABLE', 'PLASTIC', 'OTHER'] as const;
 export const CATEGORIES = ['MEAT_FISH', 'DAIRY_EGGS', 'FRUIT_VEG', 'BAKERY', 'DRY_GOODS', 'BEVERAGES', 'READY_MEALS', 'OTHER'] as const;
 /** AVAILABLE: pallets left to reserve. CLAIMED: every pallet is reserved. WITHDRAWN: pulled back by the donor. */
 export const DONATION_STATUSES = ['AVAILABLE', 'CLAIMED', 'WITHDRAWN'] as const;
@@ -20,6 +22,7 @@ export type Role = (typeof ROLES)[number];
 export type UserStatus = (typeof USER_STATUSES)[number];
 export type TemperatureRange = (typeof TEMPERATURE_RANGES)[number];
 export type Category = (typeof CATEGORIES)[number];
+export type PalletMaterial = (typeof PALLET_MATERIALS)[number];
 export type DonationStatus = (typeof DONATION_STATUSES)[number];
 export type ClaimStatus = (typeof CLAIM_STATUSES)[number];
 export type DonationState = (typeof DONATION_STATES)[number];
