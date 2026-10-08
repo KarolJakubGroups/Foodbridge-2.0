@@ -127,7 +127,7 @@ export function DonationList({ donations, now: nowIso }: { donations: DonorDonat
                   <div className="flex flex-col gap-1 min-w-0">
                   <span className="text-[17px] font-semibold text-ink">{d.productName}</span>
                   <span className="text-[15px] text-muted">
-                    {categoryLabel(d.category)} · {tempShort(d.temperatureRange)} · {fmtPalletLoad(d.palletWeights)}
+                    {categoryLabel(d.category)} · {tempShort(d.temperatureRange)} · {fmtPalletLoad(d.palletWeights)}{d.packagingUnit ? ` · ${d.packagingUnit}` : ''}
                   </span>
                   {d.claimedPallets > 0 && state !== 'WITHDRAWN' && (
                     <div className="flex flex-col gap-1 max-w-xs">

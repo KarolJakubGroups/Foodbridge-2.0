@@ -27,7 +27,7 @@ export default async function NewDonationPage({ searchParams }: PageProps<'/dono
   const source = typeof from === 'string' ? donations.find((d) => d.id === Number(from)) : undefined;
   const prefill: DonationPrefill | undefined = source && {
     productName: source.productName, category: source.category, temperatureRange: source.temperatureRange,
-    palletWeights: source.palletWeights,
+    packagingUnit: source.packagingUnit, palletWeights: source.palletWeights,
   };
 
   return (

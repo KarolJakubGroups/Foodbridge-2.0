@@ -189,6 +189,7 @@ export function AvailableDonations({ donations, now: nowIso }: { donations: Avai
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <h3 className="text-lg font-bold tracking-[-0.01em] text-ink">{d.productName}</h3>
+                    {d.packagingUnit && <span className="block text-sm text-ink-2">{d.packagingUnit}</span>}
                     <span className="flex items-center gap-1 text-sm text-muted"><MapPinIcon className="size-3.5 shrink-0" />{town(d.pickupAddress)}</span>
                   </div>
                   <div className="text-right shrink-0">

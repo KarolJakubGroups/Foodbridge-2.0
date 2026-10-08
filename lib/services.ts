@@ -5,7 +5,7 @@ import { Prisma } from '@/lib/generated/prisma/client';
 import { bundleWindow, planTransportOrders } from '@/lib/logistics';
 import { buildGallikerPayload, gallikerConfig, transmitToGalliker, type GallikerConfig, type GallikerResult } from '@/lib/galliker';
 import {
-  CATEGORIES, DomainError, MAX_PALLETS, MIN_PASSWORD_LENGTH, freePalletNumbers, freshnessCutoff, isClaimable,
+  CATEGORIES, DomainError, MAX_PACKAGING_UNIT_LENGTH, MAX_PALLETS, MIN_PASSWORD_LENGTH, freePalletNumbers, freshnessCutoff, isClaimable,
   normalizeAddress, normalizeTemperature, palletWeightsProblem, remainingPallets, totalWeightKg, weightOfPallets, type TransportStatus,
 } from '@/lib/domain';
 import type {
@@ -104,6 +104,7 @@ export async function createDonation(donor: Profile, input: DonationInput) {
       productName: input.productName.trim().slice(0, 120),
       category: input.category,
       temperatureRange: temperatureRange!,
+      packagingUnit: input.packagingUnit?.trim().slice(0, MAX_PACKAGING_UNIT_LENGTH) || null,
       bestBeforeDate: input.bestBeforeDate,
       pickupAddress: input.pickupAddress.trim().slice(0, 200),
       numberOfPallets: weights.length,
@@ -347,7 +348,7 @@ export async function sendOrderToGalliker(orderId: number, config: GallikerConfi
       donor: { select: { organizationName: true, address: true, contactName: true, phone: true } },
       claims: {
         include: {
-          donation: { select: { productName: true, category: true, temperatureRange: true, palletWeights: true, bestBeforeDate: true, pickupAddress: true } },
+          donation: { select: { productName: true, category: true, temperatureRange: true, packagingUnit: true, palletWeights: true, bestBeforeDate: true, pickupAddress: true } },
           foodbank: { select: { organizationName: true, address: true } },
         },
         orderBy: { id: 'asc' },

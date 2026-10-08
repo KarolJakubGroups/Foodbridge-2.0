@@ -120,6 +120,12 @@ describe.skipIf(!hasDb)('donation capture (FA-01)', () => {
     expect(totalWeightKg(d)).toBe(501);
   });
 
+  it('stores an optional packaging unit, trimmed', async () => {
+    expect((await services.createDonation(migros, { ...valid, packagingUnit: '  Karton à 12 × 1 l ' })).packagingUnit).toBe('Karton à 12 × 1 l');
+    expect((await services.createDonation(migros, { ...valid, packagingUnit: '   ' })).packagingUnit).toBeNull();
+    expect((await services.createDonation(migros, valid)).packagingUnit).toBeNull();
+  });
+
   it('stores a different weight for every pallet', async () => {
     const d = await services.createDonation(migros, { ...valid, palletWeights: [320, 180.5, 95] });
     expect([d.numberOfPallets, d.palletWeights, totalWeightKg(d)]).toEqual([3, [320, 180.5, 95], 595.5]);

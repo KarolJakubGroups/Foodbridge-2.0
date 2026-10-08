@@ -5,6 +5,7 @@ export const USER_STATUSES = ['PENDING', 'APPROVED', 'REJECTED'] as const;
 /** Preset storage temperatures. Donors may also describe their own, which is stored as entered. */
 export const TEMPERATURE_RANGES = ['AMBIENT', 'COOL', 'CHILLED', 'SUPERCHILLED', 'FROZEN'] as const;
 export const MAX_TEMPERATURE_LENGTH = 60;
+export const MAX_PACKAGING_UNIT_LENGTH = 80;
 /** Product categories (Warengruppen) a donation is classified into. */
 export const CATEGORIES = ['MEAT_FISH', 'DAIRY_EGGS', 'FRUIT_VEG', 'BAKERY', 'DRY_GOODS', 'BEVERAGES', 'READY_MEALS', 'OTHER'] as const;
 /** AVAILABLE: pallets left to reserve. CLAIMED: every pallet is reserved. WITHDRAWN: pulled back by the donor. */

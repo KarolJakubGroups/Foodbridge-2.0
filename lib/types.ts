@@ -55,6 +55,8 @@ export interface DonationInput {
   category: Category;
   /** A TemperatureRange preset or the donor's own description. */
   temperatureRange: TemperatureRange | (string & {});
+  /** Optional, e.g. "Karton à 12 × 1 l". */
+  packagingUnit?: string;
   bestBeforeDate: string; // YYYY-MM-DD
   pickupAddress: string;
   /** Weight of each pallet in kg; its length is the number of pallets. */
@@ -64,7 +66,7 @@ export interface DonationInput {
 }
 
 /** Values copied into the donor form when an old offer is registered again. */
-export type DonationPrefill = Pick<Donation, 'productName' | 'category' | 'temperatureRange' | 'palletWeights'>;
+export type DonationPrefill = Pick<Donation, 'productName' | 'category' | 'temperatureRange' | 'packagingUnit' | 'palletWeights'>;
 
 /** An own, still-open offer a donor could add pallets to instead of registering a duplicate. */
 export type OpenDonation = Pick<Donation, 'id' | 'productName' | 'category' | 'temperatureRange'

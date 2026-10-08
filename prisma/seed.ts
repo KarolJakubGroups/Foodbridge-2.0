@@ -35,6 +35,11 @@ const COORDINATES: Record<string, [number, number]> = {
   'Kantonsstrasse 2, 6246 Altishofen': [47.2003963, 7.9716205],
 };
 
+/** Packaging units shown on some demo offers. */
+const PACKAGING: Record<string, string> = {
+  'Milch UHT 1l': 'Karton à 12 × 1 l', 'Äpfel Gala': 'Kiste à 13 kg', 'Tiefkühl-Gemüse': 'Beutel à 2,5 kg',
+};
+
 const days = (n: number, hour = 9) => { const d = new Date(); d.setDate(d.getDate() + n); d.setHours(hour, 0, 0, 0); return d; };
 const hoursAgo = (h: number) => new Date(Date.now() - h * 3_600_000);
 const dateIn = (n: number) => new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10);
@@ -74,7 +79,7 @@ async function main() {
     const claimedPallets = claims.reduce((s, c) => s + c.pallets, 0);
     const d = await prisma.donation.create({
       data: {
-        donorId: donor.id, productName, category, temperatureRange, bestBeforeDate: dateIn(bestBeforeInDays), pickupAddress: donor.address,
+        donorId: donor.id, productName, category, temperatureRange, packagingUnit: PACKAGING[productName] ?? null, bestBeforeDate: dateIn(bestBeforeInDays), pickupAddress: donor.address,
         numberOfPallets, palletWeights, overlapStart: start, overlapEnd: end, createdAt,
         claimedPallets, status: claimedPallets === numberOfPallets ? 'CLAIMED' : 'AVAILABLE',
       },

@@ -156,7 +156,7 @@ export function OrderCard({ order, now: nowIso, readOnly = false }: { order: Tra
             <div className="min-w-0 flex flex-col gap-1">
             <span>
               <span className="font-semibold text-ink">{c.donation.productName}</span>
-              <span className="text-muted"> · {fmtPallets(c.pallets)} · {fmtKg(c.weightKg)}</span>
+              <span className="text-muted"> · {fmtPallets(c.pallets)} · {fmtKg(c.weightKg)}{c.donation.packagingUnit ? ` · ${c.donation.packagingUnit}` : ''}</span>
             </span>
             <span className="flex flex-wrap items-center gap-2 text-sm text-subtle">
               <TempPill value={c.donation.temperatureRange} />

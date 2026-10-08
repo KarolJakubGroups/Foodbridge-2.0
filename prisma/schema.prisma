@@ -48,6 +48,8 @@ model Donation {
   productName      String
   category         String   @default("OTHER") // see CATEGORIES in lib/domain.ts
   temperatureRange String   // preset (AMBIENT | COOL | CHILLED | SUPERCHILLED | FROZEN) or the donor's own text
+  /// How the goods are packed, as the donor describes it (e.g. "Karton à 12 × 1 l"); optional.
+  packagingUnit    String?
   bestBeforeDate   String   // YYYY-MM-DD (date only, no timezone)
   pickupAddress    String
   /// Pallets offered in total.

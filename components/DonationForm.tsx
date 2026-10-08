@@ -8,7 +8,7 @@ import type { Category, DonationInput, DonationPrefill, OpenDonation } from '@/l
 import {
   CATEGORIES_OPTIONS, TEMPERATURES, categoryLabel, fmtBestBefore, fmtDate, fmtDayTime, fmtKg, fmtPalletLoad, fmtPallets, fmtTime, isTemperaturePreset,
 } from '@/lib/format';
-import { FRESHNESS_DAYS, MAX_TEMPERATURE_LENGTH, normalizeProductName, palletWeightsProblem, totalWeightKg } from '@/lib/domain';
+import { FRESHNESS_DAYS, MAX_PACKAGING_UNIT_LENGTH, MAX_TEMPERATURE_LENGTH, normalizeProductName, palletWeightsProblem, totalWeightKg } from '@/lib/domain';
 import { Alert, Field, FoodPhoto, PhotoPill, TempPill, btn, chipCls, inputCls, linkCls } from '@/components/ui';
 import { CheckIcon, InfoIcon, MapPinIcon } from '@/components/icons';
 import { DatePicker, DateTimePicker, Select } from '@/components/pickers';
@@ -78,6 +78,7 @@ export function DonationForm({ defaultAddress, organizationName, openDonations, 
     productName: prefill?.productName ?? '',
     category: (prefill?.category ?? '') as Category | '',
     temperatureRange: prefill?.temperatureRange ?? '',
+    packagingUnit: prefill?.packagingUnit ?? '',
     bestBeforeDate: '',
     pickupAddress: defaultAddress,
     ...defaultWindow(),
@@ -99,7 +100,7 @@ export function DonationForm({ defaultAddress, organizationName, openDonations, 
   const setValue = (key: Key, value: string) => setForm((f) => ({ ...f, [key]: value }));
   const set = (key: Key) => (e: { target: { value: string } }) => setValue(key, e.target.value);
   const reset = () => {
-    setForm({ ...initial(), productName: '', category: '', temperatureRange: '' });
+    setForm({ ...initial(), productName: '', category: '', temperatureRange: '', packagingUnit: '' });
     setPalletState(initialPalletWeights());
     setCustomTemperature(false); setEditAddress(false); setDone(null); setError(null);
   };
@@ -143,6 +144,7 @@ export function DonationForm({ defaultAddress, organizationName, openDonations, 
       productName: form.productName,
       category: form.category as Category,
       temperatureRange: form.temperatureRange,
+      packagingUnit: form.packagingUnit,
       bestBeforeDate: form.bestBeforeDate,
       pickupAddress: form.pickupAddress,
       palletWeights,
@@ -288,6 +290,10 @@ export function DonationForm({ defaultAddress, organizationName, openDonations, 
 
           <Step n={2} title="Wie viel ist es?">
             <PalletWeightsInput value={palletState} onChange={setPalletState} />
+            <Field label="Verpackungseinheit (optional)" hint="Wie die Ware verpackt ist, z. B. «Karton à 12 × 1 l» oder «Kiste à 10 kg».">
+              <input className={inputCls} value={form.packagingUnit} onChange={set('packagingUnit')} maxLength={MAX_PACKAGING_UNIT_LENGTH}
+                placeholder="z. B. Karton à 12 × 1 l" autoComplete="off" />
+            </Field>
           </Step>
 
           <Step n={3} title="Haltbarkeit und Abholung">
@@ -348,6 +354,7 @@ export function DonationForm({ defaultAddress, organizationName, openDonations, 
               {form.productName.trim() || 'Produktname'}
             </span>
             <span className="text-[15px] text-muted">{organizationName}</span>
+            {form.packagingUnit.trim() && <span className="text-[15px] text-ink-2">{form.packagingUnit.trim()}</span>}
             <div className="flex items-baseline gap-2.5">
               <span className="text-[32px] font-bold tracking-[-0.02em] text-brand-700 tabular-nums">{fmtKg(totalKg)}</span>
               <span className="text-base text-muted">{fmtPallets(pallets)}</span>
